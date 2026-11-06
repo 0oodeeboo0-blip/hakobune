@@ -13,7 +13,8 @@ for name in vsftpd pureftpd proftpd; do
   extra=()
   # Debian の pure-ftpd は Linux のケーパビリティを切り替えるので、通常のコンテナの権限では起動できない
   [ "$name" = pureftpd ] && extra=(--privileged)
-  docker run -d --network host "${extra[@]}" --name "hakobune-$name" "hakobune-test-$name" >/dev/null
+  # --init: サーバーを PID 1 にしない（子プロセスの後始末やシグナルの扱いを init に任せる）
+  docker run -d --init --network host "${extra[@]}" --name "hakobune-$name" "hakobune-test-$name" >/dev/null
 done
 
 wait_for_port() {
@@ -35,4 +36,8 @@ status=0
 wait_for_port vsftpd 2121 || status=1
 wait_for_port pureftpd 2122 || status=1
 wait_for_port proftpd 2123 || status=1
+
+# 待ち受けを確かめたあとも動き続けているか
+sleep 3
+docker ps -a --filter "name=hakobune-" --format '{{.Names}}: {{.Status}}'
 exit $status

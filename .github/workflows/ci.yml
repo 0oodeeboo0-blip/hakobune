@@ -59,8 +59,11 @@ jobs:
         run: |
           for name in vsftpd pureftpd proftpd; do
             echo "::group::$name"
+            docker inspect -f 'status={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' "hakobune-$name" || true
             docker logs "hakobune-$name" 2>&1 | tail -n 100 || true
-            docker exec "hakobune-$name" sh -c 'tail -n 200 /var/log/*.log 2>/dev/null' || true
+            mkdir -p "logs/$name"
+            docker cp "hakobune-$name:/var/log/." "logs/$name" 2>/dev/null || true
+            find "logs/$name" -name '*hakobune*.log' -exec tail -n 200 {} + || true
             echo "::endgroup::"
           done
 
