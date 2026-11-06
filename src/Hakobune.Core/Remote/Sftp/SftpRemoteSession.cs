@@ -44,6 +44,7 @@ public sealed class SftpRemoteSession : IRemoteSession
         var client = new SftpClient(CreateConnectionInfo())
         {
             OperationTimeout = _settings.OperationTimeout,
+            KeepAliveInterval = TimeSpan.FromSeconds(30),
         };
         client.HostKeyReceived += (_, e) =>
         {
@@ -232,12 +233,10 @@ public sealed class SftpRemoteSession : IRemoteSession
     public Task SetModifiedTimeAsync(string path, DateTimeOffset modified, CancellationToken cancellationToken) =>
         RunAsync(client => Task.Run(() => client.SetLastWriteTimeUtc(path, modified.UtcDateTime), cancellationToken), cancellationToken);
 
+    // 何もしていない間は SSH.NET が KeepAliveInterval ごとに合図を送る。
+    // ここでは軽い問い合わせをして、接続がまだ使えるかも確かめる。
     public Task KeepAliveAsync(CancellationToken cancellationToken) =>
-        RunAsync(client =>
-        {
-            client.SendKeepAlive();
-            return Task.CompletedTask;
-        }, cancellationToken);
+        RunAsync(client => client.GetAttributesAsync(client.WorkingDirectory, cancellationToken), cancellationToken);
 
     public ValueTask DisposeAsync()
     {
