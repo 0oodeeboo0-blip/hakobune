@@ -256,6 +256,14 @@
                 <Setter Property="TextWrapping" Value="Wrap" />
             </Style>
 
+            <Style x:Key="NameListBoxStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorSecondaryBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="Padding" Value="12,8,12,8" />
+                <Setter Property="CornerRadius" Value="4" />
+            </Style>
+
             <Style x:Key="CriticalBoxStyle" TargetType="Border">
                 <Setter Property="Background" Value="{ThemeResource SystemFillColorCriticalBackgroundBrush}" />
                 <Setter Property="Padding" Value="12,8,12,8" />

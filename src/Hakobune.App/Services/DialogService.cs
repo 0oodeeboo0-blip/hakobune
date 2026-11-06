@@ -226,11 +226,11 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
         OnUiThreadAsync<ConflictPolicy?>(async () =>
         {
             var where = direction == TransferDirection.Upload ? "サーバー" : "パソコン";
-            var shown = string.Join("、", names.Select(name => $"「{name}」"));
             var panel = new StackPanel { Spacing = 12, MaxWidth = 460 };
-            panel.Children.Add(Paragraph(count > names.Count
-                ? $"{where}に、同じ名前のものが {count.ToString("N0", CultureInfo.CurrentCulture)} 件あります（{shown} ほか）。"
-                : $"{where}に、同じ名前のものがあります（{shown}）。"));
+            panel.Children.Add(Paragraph(count > 1
+                ? $"{where}に、同じ名前のものが {count.ToString("N0", CultureInfo.CurrentCulture)} 件あります。"
+                : $"{where}に、同じ名前のものがあります。"));
+            panel.Children.Add(NameList(names, count));
             panel.Children.Add(Paragraph("フォルダの中のファイルも、同じように扱います。"));
 
             var choices = new RadioButtons();
@@ -501,6 +501,23 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
         });
 
     private static TextBlock Paragraph(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap };
+
+    // 名前を 1 行ずつ並べた枠（多いときは「ほか N 件」）
+    private static Border NameList(IReadOnlyList<string> names, int total)
+    {
+        var list = new StackPanel { Spacing = 2 };
+        foreach (var name in names)
+            list.Children.Add(new TextBlock { Text = name, TextTrimming = TextTrimming.CharacterEllipsis, IsTextSelectionEnabled = true });
+        if (total > names.Count)
+        {
+            list.Children.Add(new TextBlock
+            {
+                Text = $"ほか {(total - names.Count).ToString("N0", CultureInfo.CurrentCulture)} 件",
+                Style = Styled("SecondaryTextStyle"),
+            });
+        }
+        return new Border { Style = Styled("NameListBoxStyle"), Child = list };
+    }
 
     // 16 進の指紋を「AB:CD:…」の形にする（ブラウザーの証明書の画面と同じ）
     private static string PairUp(string hex) =>
