@@ -10,7 +10,10 @@ for name in vsftpd pureftpd proftpd; do
   echo "::group::build $name"
   docker build -t "hakobune-test-$name" "$name"
   echo "::endgroup::"
-  docker run -d --network host --name "hakobune-$name" "hakobune-test-$name" >/dev/null
+  extra=()
+  # Debian の pure-ftpd は Linux のケーパビリティを切り替えるので、通常のコンテナの権限では起動できない
+  [ "$name" = pureftpd ] && extra=(--privileged)
+  docker run -d --network host "${extra[@]}" --name "hakobune-$name" "hakobune-test-$name" >/dev/null
 done
 
 wait_for_port() {
@@ -23,10 +26,13 @@ wait_for_port() {
     sleep 1
   done
   echo "::error::$name did not start on port $port"
+  docker ps -a --filter "name=hakobune-$name" --format '{{.Names}}: {{.Status}}' || true
   docker logs "hakobune-$name" || true
   return 1
 }
 
-wait_for_port vsftpd 2121
-wait_for_port pureftpd 2122
-wait_for_port proftpd 2123
+status=0
+wait_for_port vsftpd 2121 || status=1
+wait_for_port pureftpd 2122 || status=1
+wait_for_port proftpd 2123 || status=1
+exit $status
