@@ -246,14 +246,15 @@
                 Background="{ThemeResource ControlFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
                 BorderThickness="1"
-                CornerRadius="{StaticResource ControlCornerRadius}">
+                CornerRadius="{StaticResource ControlCornerRadius}"
+                Visibility="{x:Bind ViewModel.HasSource, Mode=OneWay}">
                 <BreadcrumbBar
                     VerticalAlignment="Center"
                     AutomationProperties.Name="いまのフォルダ"
                     ItemClicked="OnBreadcrumbClicked"
                     ItemsSource="{x:Bind ViewModel.Breadcrumbs, Mode=OneWay}" />
             </Border>
-            <Grid Grid.Column="2">
+            <Grid Grid.Column="2" Visibility="{x:Bind ViewModel.HasSource, Mode=OneWay}">
                 <TextBox
                     Padding="32,5,6,6"
                     VerticalAlignment="Center"
@@ -271,19 +272,68 @@
             </Grid>
         </Grid>
 
-        <!--  お知らせ（一覧を更新できなかったときなど）。一覧は消さずに残す  -->
-        <InfoBar
+        <!--  お知らせ（一覧を更新できなかったときなど）。一覧は消さずに残す。狭くても 2 行に収まるよう、ボタンは右に置く  -->
+        <Border
             Grid.Row="2"
             Margin="10,0,10,8"
-            IsClosable="False"
-            IsOpen="{x:Bind ViewModel.HasMessage, Mode=OneWay}"
-            Message="{x:Bind ViewModel.MessageText, Mode=OneWay}"
-            Severity="Warning"
-            Title="{x:Bind ViewModel.MessageTitle, Mode=OneWay}">
-            <InfoBar.ActionButton>
-                <Button Command="{x:Bind ViewModel.RetryCommand, Mode=OneWay}" Content="今すぐ再試行" />
-            </InfoBar.ActionButton>
-        </InfoBar>
+            Padding="12,8,8,8"
+            AutomationProperties.LiveSetting="Polite"
+            AutomationProperties.Name="{x:Bind ViewModel.MessageTitle, Mode=OneWay}"
+            Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
+            BorderBrush="{ThemeResource HakobuneWarningStrokeBrush}"
+            BorderThickness="1"
+            CornerRadius="{StaticResource ControlCornerRadius}"
+            Visibility="{x:Bind ViewModel.HasMessage, Mode=OneWay}">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Canvas
+                    Width="20"
+                    Height="20"
+                    VerticalAlignment="Center">
+                    <Ellipse
+                        Canvas.Left="2"
+                        Canvas.Top="2"
+                        Width="16"
+                        Height="16"
+                        Fill="{ThemeResource HakobuneWarningIconBrush}" />
+                    <Path
+                        Data="M 10,5.75 L 10,10.75"
+                        Stroke="{ThemeResource HakobuneWarningGlyphBrush}"
+                        StrokeEndLineCap="Round"
+                        StrokeStartLineCap="Round"
+                        StrokeThickness="1.75" />
+                    <Ellipse
+                        Canvas.Left="8.95"
+                        Canvas.Top="12.85"
+                        Width="2.1"
+                        Height="2.1"
+                        Fill="{ThemeResource HakobuneWarningGlyphBrush}" />
+                </Canvas>
+                <StackPanel
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    Spacing="2">
+                    <TextBlock
+                        FontWeight="SemiBold"
+                        Text="{x:Bind ViewModel.MessageTitle, Mode=OneWay}"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="{x:Bind ViewModel.MessageText, Mode=OneWay}"
+                        TextWrapping="Wrap" />
+                </StackPanel>
+                <Button
+                    Grid.Column="2"
+                    VerticalAlignment="Center"
+                    Command="{x:Bind ViewModel.RetryCommand, Mode=OneWay}"
+                    Content="今すぐ再試行" />
+            </Grid>
+        </Border>
 
         <!--  列の見出し（押すと並べ替え）  -->
         <Grid
@@ -369,7 +419,7 @@
             SelectionMode="Extended" />
         <StackPanel
             Grid.Row="4"
-            MaxWidth="320"
+            MaxWidth="360"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
             Spacing="4"

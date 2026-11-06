@@ -11,6 +11,9 @@
 
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="HakobuneWarningStrokeBrush" Color="#FFEDD58F" />
+                    <SolidColorBrush x:Key="HakobuneWarningIconBrush" Color="#FF9D5D00" />
+                    <SolidColorBrush x:Key="HakobuneWarningGlyphBrush" Color="#FFFFFFFF" />
                     <SolidColorBrush x:Key="HakobuneBrandBrush" Color="#FF0B6E78" />
                     <SolidColorBrush x:Key="HakobuneAccentTextBrush" Color="#FF0B6E78" />
                     <SolidColorBrush x:Key="HakobuneAccentTintBrush" Color="#1C0B6E78" />
@@ -29,6 +32,9 @@
                     <SolidColorBrush x:Key="BreadcrumbBarHoverForegroundBrush" Color="{ThemeResource TextFillColorPrimary}" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="HakobuneWarningStrokeBrush" Color="#FF6A5528" />
+                    <SolidColorBrush x:Key="HakobuneWarningIconBrush" Color="#FFFFB547" />
+                    <SolidColorBrush x:Key="HakobuneWarningGlyphBrush" Color="#FF1E2023" />
                     <SolidColorBrush x:Key="HakobuneBrandBrush" Color="#FF0B6E78" />
                     <SolidColorBrush x:Key="HakobuneAccentTextBrush" Color="#FF64CED8" />
                     <SolidColorBrush x:Key="HakobuneAccentTintBrush" Color="#2E64CED8" />
@@ -47,6 +53,9 @@
                     <SolidColorBrush x:Key="BreadcrumbBarHoverForegroundBrush" Color="{ThemeResource TextFillColorPrimary}" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="HakobuneWarningStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="HakobuneWarningIconBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="HakobuneWarningGlyphBrush" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="HakobuneBrandBrush" Color="{ThemeResource SystemColorHighlightColor}" />
                     <SolidColorBrush x:Key="HakobuneAccentTextBrush" Color="{ThemeResource SystemColorHighlightColor}" />
                     <SolidColorBrush x:Key="HakobuneAccentTintBrush" Color="Transparent" />

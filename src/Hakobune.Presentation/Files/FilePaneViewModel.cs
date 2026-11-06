@@ -228,7 +228,7 @@ public sealed class FilePaneViewModel : ObservableObject
     }
 
     /// <summary>行がないときの補足。</summary>
-    public string EmptyHint => !HasSource && Kind == PaneKind.Remote ? "左の一覧から接続先を選ぶと、ここにサーバーのファイルが表示されます" : "";
+    public string EmptyHint => !HasSource && Kind == PaneKind.Remote ? "左の接続先を選ぶと、ここにサーバーのファイルが出ます" : "";
 
     /// <summary>上のフォルダへ行けるか。</summary>
     public bool CanGoUp => _hasLoaded && _source?.GetParent(CurrentPath) is not null;

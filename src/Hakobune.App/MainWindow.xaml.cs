@@ -39,7 +39,7 @@ public sealed partial class MainWindow : Window
         PlaceWindow(options.Width, options.Height, center: options.ScreenshotPath is null);
 
         if (options.ScreenshotPath is { } path)
-            _view.Loaded += async (_, _) => await CaptureAndExitAsync(path);
+            _view.Loaded += async (_, _) => await CaptureAndExitAsync(path, options.Width, options.Height);
 
         Closed += (_, _) => _viewModel.Dispose();
     }
@@ -73,10 +73,13 @@ public sealed partial class MainWindow : Window
         AppWindow.Move(new PointInt32(x, y));
     }
 
-    private async Task CaptureAndExitAsync(string path)
+    private async Task CaptureAndExitAsync(string path, int width, int height)
     {
         try
         {
+            // タイトルバーまで広げた分、中身は指定より大きくなるので、測って合わせる
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
+            FitContent(width, height);
             // 一覧の行やフォントが描き終わるのを待つ
             await Task.Delay(TimeSpan.FromSeconds(3));
             await Screenshot.SaveAsync(_view, path);
@@ -87,6 +90,18 @@ public sealed partial class MainWindow : Window
             Environment.Exit(1);
         }
         Application.Current.Exit();
+    }
+
+    // 中身（MainView）がちょうど width x height（論理ピクセル）になるよう、ウインドウの大きさを直す
+    private void FitContent(int width, int height)
+    {
+        var scale = _view.XamlRoot?.RasterizationScale ?? 1d;
+        var dx = (int)Math.Round((width - _view.ActualWidth) * scale);
+        var dy = (int)Math.Round((height - _view.ActualHeight) * scale);
+        if (dx == 0 && dy == 0)
+            return;
+        var size = AppWindow.Size;
+        AppWindow.Resize(new SizeInt32(size.Width + dx, size.Height + dy));
     }
 
     [DllImport("user32.dll")]
