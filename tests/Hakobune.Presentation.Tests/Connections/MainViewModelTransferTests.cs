@@ -105,6 +105,45 @@ public sealed class MainViewModelTransferTests : IDisposable
     }
 
     [Fact]
+    public async Task Files_that_are_not_sent_stay_behind()
+    {
+        WriteLocal("index.html", "hello");
+        WriteLocal("Thumbs.db", "thumbs");
+        WriteLocal("~$見積書.xlsx", "lock");
+        WriteLocal(Path.Combine("images", "Thumbs.db"), "thumbs");
+        WriteLocal(Path.Combine("images", "logo.png"), "png");
+        using var main = await ConnectAsync();
+        await main.Local.RefreshAsync();
+        Assert.True(main.Local.Items.Single(row => row.Name == "Thumbs.db").IsExcluded);
+        Assert.False(main.Local.Items.Single(row => row.Name == "index.html").IsExcluded);
+
+        main.Local.UpdateSelection([.. main.Local.Items]);
+        await main.UploadCommand.ExecuteAsync(null);
+        await WaitForAsync(() => main.PendingTransferCount == 0 && main.Transfers.CompletedCount == 2);
+
+        Assert.True(_server.Files.ContainsKey("/home/web/index.html"));
+        Assert.True(_server.Files.ContainsKey("/home/web/images/logo.png"));
+        Assert.DoesNotContain(_server.Files.Keys, path => path.Contains("Thumbs.db", StringComparison.Ordinal) || path.Contains("~$", StringComparison.Ordinal));
+        Assert.Contains(main.Log.GetSnapshot().Entries, entry => entry.Message.Contains("送らないファイル 3 件を除きました", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Choosing_only_files_that_are_not_sent_explains_why()
+    {
+        WriteLocal("Thumbs.db", "thumbs");
+        using var main = await ConnectAsync();
+        await main.Local.RefreshAsync();
+
+        main.Local.UpdateSelection([main.Local.Items.Single(row => row.Name == "Thumbs.db")]);
+        await main.UploadCommand.ExecuteAsync(null);
+
+        Assert.True(main.Local.HasMessage);
+        Assert.Equal("送るものがありません", main.Local.MessageTitle);
+        Assert.DoesNotContain(_server.Files.Keys, path => path.EndsWith("Thumbs.db", StringComparison.Ordinal));
+        Assert.Equal(0, main.Transfers.TotalCount);
+    }
+
+    [Fact]
     public async Task Empty_folders_are_made_on_the_other_side_too()
     {
         Directory.CreateDirectory(Path.Combine(LocalFolder, "uploads"));

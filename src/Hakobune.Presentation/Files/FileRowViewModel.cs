@@ -6,14 +6,18 @@ namespace Hakobune.Presentation.Files;
 /// <summary>一覧の 1 行。表示する中身は変わらないので、変更の通知はしない。</summary>
 public sealed class FileRowViewModel
 {
-    /// <summary>項目から行を作る。日時は <paramref name="timeZone"/> の時刻で表示する。</summary>
-    public FileRowViewModel(FileEntry entry, TimeZoneInfo timeZone, bool showsPermissions = false)
+    /// <summary>
+    /// 項目から行を作る。日時は <paramref name="timeZone"/> の時刻で表示する。
+    /// <paramref name="excludedBy"/> は、送らないファイルの決まりに当てはまるときの名前（パソコン側の一覧で印を出す）。
+    /// </summary>
+    public FileRowViewModel(FileEntry entry, TimeZoneInfo timeZone, bool showsPermissions = false, string? excludedBy = null)
     {
         ArgumentNullException.ThrowIfNull(entry);
         ArgumentNullException.ThrowIfNull(timeZone);
 
         Entry = entry;
         ShowsPermissions = showsPermissions;
+        ExcludedBy = excludedBy;
         Kind = FileKinds.Of(entry);
         SizeText = entry.IsDirectory ? "" : DisplayText.FileSize(entry.Size);
         ModifiedText = entry.Modified is { } modified
@@ -48,6 +52,18 @@ public sealed class FileRowViewModel
     /// <summary>ファイルか（フォルダでないか）。</summary>
     public bool IsFile => !IsDirectory;
 
+    /// <summary>送らないファイルの決まりに当てはまるなら、その名前（Thumbs.db など）。</summary>
+    public string? ExcludedBy { get; }
+
+    /// <summary>送らないファイルか（アップロードや同期で送らない）。</summary>
+    public bool IsExcluded => ExcludedBy is not null;
+
+    /// <summary>「送らない」の印の説明。</summary>
+    public string ExcludedTip => ExcludedBy is null ? "" : $"送らないファイル（{ExcludedBy}）。設定の「送らないファイル」で変えられます";
+
+    /// <summary>名前の濃さ（送らないファイルは薄くする）。</summary>
+    public double NameOpacity => IsExcluded ? 0.62 : 1;
+
     /// <summary>
     /// 同じフォルダの取り直しで、増えた・変わった行か（画面がしばらく、うすい色で光らせる）。
     /// <see cref="FilePaneViewModel.HighlightDuration"/> がたつと false に戻る。画面は行を出すときに見るだけなので、通知はしない。
@@ -59,7 +75,7 @@ public sealed class FileRowViewModel
     {
         FileKind.Drive => $"ドライブ {Name}",
         FileKind.Folder => $"フォルダ {Name}",
-        _ => $"{Name}、{SizeText}、{ModifiedText}",
+        _ => IsExcluded ? $"{Name}、{SizeText}、{ModifiedText}、送らない" : $"{Name}、{SizeText}、{ModifiedText}",
     };
 
     // アイコンの出し分け（画面の x:Bind で Visibility に使う）

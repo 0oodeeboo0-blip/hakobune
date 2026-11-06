@@ -249,7 +249,8 @@ jobs:
             @{ Name = 'dialog-conflict'; Args = '--dialog conflict --theme light' },
             @{ Name = 'dialog-stop-dark'; Args = '--dialog stop --theme dark' },
             @{ Name = 'dialog-settings'; Args = '--dialog settings --theme light' },
-            @{ Name = 'dialog-settings-dark'; Args = '--dialog settings --theme dark' }
+            @{ Name = 'dialog-settings-dark'; Args = '--dialog settings --theme dark' },
+            @{ Name = 'dialog-settings-exclusions'; Args = '--dialog settings-exclusions --theme light --size 1280x900' }
           )
           $failed = $false
           foreach ($shot in $shots) {

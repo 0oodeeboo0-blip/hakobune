@@ -57,6 +57,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="20" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <Grid
                             Width="20"
@@ -171,8 +172,23 @@
                         <TextBlock
                             Grid.Column="1"
                             VerticalAlignment="Center"
+                            Opacity="{x:Bind NameOpacity}"
                             Text="{x:Bind Name}"
                             TextTrimming="CharacterEllipsis" />
+                        <!--  送らないファイルの印（パソコン側の一覧だけ）  -->
+                        <Border
+                            Grid.Column="2"
+                            Padding="6,0,6,1"
+                            VerticalAlignment="Center"
+                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                            CornerRadius="9"
+                            ToolTipService.ToolTip="{x:Bind ExcludedTip}"
+                            Visibility="{x:Bind IsExcluded}">
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="送らない" />
+                        </Border>
                     </Grid>
                     <TextBlock
                         Grid.Column="1"

@@ -45,6 +45,9 @@ public sealed record AppSettings
     /// <summary>転送の一覧を広げたときの高さ。</summary>
     public double TransferListHeight { get; init; } = 244;
 
+    /// <summary>送らないファイル。</summary>
+    public ExclusionSettings Exclusions { get; init; } = new();
+
     /// <summary>読み込む。無い・読めない・壊れているときは、既定の設定にする。</summary>
     public static async Task<AppSettings> LoadAsync(string path, CancellationToken cancellationToken = default)
     {

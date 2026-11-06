@@ -38,11 +38,13 @@ public class DemoDataTests
         using var main = await DemoData.CreateAsync(DemoScenario.Normal);
 
         Assert.Equal(
-            new[] { "css", "images", "js", "商品写真", ".htaccess", "about.html", "backup-2026-11.zip", "index.html", "logo.png", "robots.txt", "sitemap.xml", "お問い合わせ.html" },
+            new[] { "css", "images", "js", "商品写真", ".htaccess", "about.html", "backup-2026-11.zip", "index.html", "logo.png", "robots.txt", "sitemap.xml", "Thumbs.db", "お問い合わせ.html" },
             main.Local.Items.Select(item => item.Name).ToArray());
         Assert.Equal(
-            new[] { "", "", "", "", "2 KB", "9 KB", "128.4 MB", "18 KB", "46 KB", "1 KB", "4 KB", "12 KB" },
+            new[] { "", "", "", "", "2 KB", "9 KB", "128.4 MB", "18 KB", "46 KB", "1 KB", "4 KB", "18 KB", "12 KB" },
             main.Local.Items.Select(item => item.SizeText).ToArray());
+        // 送らないファイルには印が付く
+        Assert.Equal(new[] { "Thumbs.db" }, main.Local.Items.Where(item => item.IsExcluded).Select(item => item.Name).ToArray());
         Assert.Equal("2026/11/05 18:22", main.Local.Items[0].ModifiedText);
         Assert.Equal("商品写真", main.Local.FocusItem?.Name);
         Assert.Equal(new[] { "C:", "Users", "user", "Sites", "shop" }, main.Local.Breadcrumbs.Select(segment => segment.Label).ToArray());

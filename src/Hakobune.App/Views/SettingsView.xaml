@@ -3,6 +3,7 @@
     x:Class="Hakobune.App.Views.SettingsView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:settings="using:Hakobune.Presentation.Settings"
     Language="ja-JP">
 
     <!--  設定（ダイアログの中身）。変えるとすぐに反映して保存する  -->
@@ -95,6 +96,250 @@
                 IsOn="{x:Bind ViewModel.ShowHiddenFiles, Mode=TwoWay}"
                 OffContent="オフ"
                 OnContent="オン" />
+        </Grid>
+
+        <TextBlock
+            x:Name="ExclusionsHeading"
+            Margin="0,16,0,4"
+            Style="{StaticResource BodyStrongTextBlockStyle}"
+            Text="送らないファイル" />
+
+        <Grid Style="{StaticResource SettingsCardStyle}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <FontIcon
+                VerticalAlignment="Center"
+                FontSize="16"
+                Glyph="&#xE8F8;" />
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock Text="送らないファイルを使う" />
+                <TextBlock
+                    FontSize="12"
+                    Style="{StaticResource SecondaryTextStyle}"
+                    Text="アップロードと同期のとき、下の名前に当てはまるファイルやフォルダは送りません。同期でサーバーから消すときも、当てはまるものは消しません"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+            <ToggleSwitch
+                Grid.Column="2"
+                MinWidth="0"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="送らないファイルを使う"
+                IsOn="{x:Bind ViewModel.ExclusionsEnabled, Mode=TwoWay}"
+                OffContent="オフ"
+                OnContent="オン" />
+        </Grid>
+
+        <!--  送らない名前の一覧  -->
+        <Grid
+            Padding="0"
+            RowSpacing="0"
+            Style="{StaticResource SettingsCardStyle}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <Grid Padding="16,10,12,10" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    VerticalAlignment="Center"
+                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                    Text="送らない名前" />
+                <TextBlock
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    FontSize="12"
+                    Style="{StaticResource SecondaryTextStyle}"
+                    Text="{x:Bind ViewModel.ExclusionSummary, Mode=OneWay}" />
+                <Button
+                    Grid.Column="2"
+                    Command="{x:Bind ViewModel.ResetExclusionsCommand}"
+                    Content="最初の状態に戻す" />
+            </Grid>
+            <ItemsControl
+                Grid.Row="1"
+                IsTabStop="False"
+                ItemsSource="{x:Bind ViewModel.ExclusionItems}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="settings:ExclusionItemViewModel">
+                        <Grid
+                            MinHeight="48"
+                            Padding="16,4,8,4"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="0,1,0,0"
+                            ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="36" />
+                            </Grid.ColumnDefinitions>
+                            <ToggleSwitch
+                                MinWidth="0"
+                                VerticalAlignment="Center"
+                                AutomationProperties.Name="{x:Bind Pattern}"
+                                IsOn="{x:Bind IsEnabled, Mode=TwoWay}"
+                                OffContent=""
+                                OnContent="" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock
+                                    FontFamily="Cascadia Mono, Consolas"
+                                    IsTextSelectionEnabled="True"
+                                    Text="{x:Bind Pattern}" />
+                                <TextBlock
+                                    FontSize="12"
+                                    Style="{StaticResource SecondaryTextStyle}"
+                                    Text="{x:Bind Description}" />
+                            </StackPanel>
+                            <TextBlock
+                                Grid.Column="2"
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                Style="{StaticResource SecondaryTextStyle}"
+                                Text="{x:Bind HitText, Mode=OneWay}" />
+                            <Button
+                                Grid.Column="3"
+                                Width="32"
+                                Height="32"
+                                Padding="0"
+                                VerticalAlignment="Center"
+                                AutomationProperties.Name="{x:Bind RemoveLabel}"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Command="{x:Bind RemoveCommand}"
+                                ToolTipService.ToolTip="{x:Bind RemoveLabel}"
+                                Visibility="{x:Bind CanRemove}">
+                                <FontIcon FontSize="12" Glyph="&#xE711;" />
+                            </Button>
+                        </Grid>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </Grid>
+
+        <!--  名前を足す  -->
+        <Grid Style="{StaticResource SettingsCardStyle}">
+            <StackPanel Spacing="8">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox
+                        Header="名前を足す"
+                        IsSpellCheckEnabled="False"
+                        KeyDown="OnPatternKeyDown"
+                        PlaceholderText="例: *.psd、backup/"
+                        Text="{x:Bind ViewModel.NewPattern, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <Button
+                        Grid.Column="1"
+                        VerticalAlignment="Bottom"
+                        Command="{x:Bind ViewModel.AddPatternCommand}"
+                        Content="足す"
+                        Style="{StaticResource AccentButtonStyle}" />
+                </Grid>
+                <TextBlock
+                    FontSize="12"
+                    Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                    Text="{x:Bind ViewModel.PatternError, Mode=OneWay}"
+                    TextWrapping="Wrap"
+                    Visibility="{x:Bind ViewModel.HasPatternError, Mode=OneWay}" />
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        FontSize="12"
+                        Style="{StaticResource SecondaryTextStyle}"
+                        Text="よく足すもの:" />
+                    <ItemsControl IsTabStop="False" ItemsSource="{x:Bind ViewModel.SuggestedPatterns}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="6" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <Button
+                                    Padding="10,2"
+                                    Click="OnSuggestionClick"
+                                    Content="{x:Bind}"
+                                    CornerRadius="12"
+                                    FontSize="12"
+                                    Tag="{x:Bind}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+                <TextBlock
+                    FontSize="12"
+                    Style="{StaticResource SecondaryTextStyle}"
+                    TextWrapping="Wrap">
+                    <Run Text="* はどんな文字にも当てはまります（*.psd なら、名前が .psd で終わるファイル全部）。" />
+                    <LineBreak />
+                    <Run Text="最後に / を付けるとフォルダです（backup/ なら、backup という名前のフォルダと中身全部）。" />
+                    <LineBreak />
+                    <Run Text="大文字と小文字は区別しません。接続先ごとの名前は、接続先の編集の「詳しい設定」で足せます。" />
+                </TextBlock>
+            </StackPanel>
+        </Grid>
+
+        <!--  試しに当てはめる（パソコン側でいま開いているフォルダ）  -->
+        <Grid Style="{StaticResource SettingsCardStyle}" Visibility="{x:Bind ViewModel.HasPreviewFolder}">
+            <StackPanel Spacing="4">
+                <TextBlock Text="試しに当てはめる" />
+                <TextBlock
+                    FontSize="12"
+                    Style="{StaticResource SecondaryTextStyle}"
+                    Text="{x:Bind ViewModel.PreviewFolder}"
+                    TextTrimming="CharacterEllipsis" />
+                <TextBlock
+                    Margin="0,4,0,0"
+                    Foreground="{ThemeResource HakobuneAccentTextBrush}"
+                    Style="{StaticResource BodyStrongTextBlockStyle}"
+                    Text="{x:Bind ViewModel.PreviewText, Mode=OneWay}"
+                    TextWrapping="Wrap" />
+                <ListView
+                    MaxHeight="180"
+                    IsItemClickEnabled="False"
+                    ItemsSource="{x:Bind ViewModel.PreviewItems}"
+                    SelectionMode="None">
+                    <ListView.ItemContainerTransitions>
+                        <TransitionCollection />
+                    </ListView.ItemContainerTransitions>
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="settings:ExclusionMatch">
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    VerticalAlignment="Center"
+                                    FontSize="13"
+                                    Text="{x:Bind DisplayPath}"
+                                    TextTrimming="CharacterEllipsis" />
+                                <Border
+                                    Grid.Column="1"
+                                    Padding="7,1"
+                                    VerticalAlignment="Center"
+                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                    CornerRadius="9">
+                                    <TextBlock
+                                        FontFamily="Cascadia Mono, Consolas"
+                                        FontSize="11"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="{x:Bind Pattern}" />
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </StackPanel>
         </Grid>
 
         <TextBlock

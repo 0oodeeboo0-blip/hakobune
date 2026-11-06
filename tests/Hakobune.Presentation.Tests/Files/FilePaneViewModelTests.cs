@@ -146,6 +146,33 @@ public class FilePaneViewModelTests
     }
 
     [Fact]
+    public async Task Files_that_are_not_sent_are_marked_on_the_local_side_only()
+    {
+        var source = new FakeFileSource();
+        source.Folders["/data"] = [FakeFileSource.File("/data", "Thumbs.db", 10), FakeFileSource.File("/data", "a.txt", 10)];
+        var rules = new ExclusionRules(["Thumbs.db"]);
+        var local = new FilePaneViewModel(PaneKind.Local) { Exclusions = rules };
+        await local.SetSourceAsync(source, cancellationToken: TestContext.Current.CancellationToken);
+
+        var marked = Assert.Single(local.Items, row => row.IsExcluded);
+        Assert.Equal("Thumbs.db", marked.Name);
+        Assert.EndsWith("送らない", marked.AccessibleName, StringComparison.Ordinal);
+        Assert.Contains("Thumbs.db", marked.ExcludedTip, StringComparison.Ordinal);
+
+        // 同じ決まりなら行は作り直さない
+        var before = local.Items.ToList();
+        local.Exclusions = new ExclusionRules(["thumbs.db"]);
+        Assert.Equal(before, local.Items);
+
+        local.Exclusions = ExclusionRules.None;
+        Assert.DoesNotContain(local.Items, row => row.IsExcluded);
+
+        var remote = new FilePaneViewModel(PaneKind.Remote) { Exclusions = rules };
+        await remote.SetSourceAsync(source, cancellationToken: TestContext.Current.CancellationToken);
+        Assert.DoesNotContain(remote.Items, row => row.IsExcluded);
+    }
+
+    [Fact]
     public async Task A_failed_refresh_keeps_the_list_and_says_why()
     {
         var (pane, source) = await OpenAsync();

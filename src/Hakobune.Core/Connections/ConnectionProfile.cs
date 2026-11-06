@@ -31,6 +31,8 @@ public enum ConnectionProtocol
 /// </summary>
 public sealed record ConnectionProfile
 {
+    private static readonly char[] LineBreaks = ['\r', '\n'];
+
     /// <summary>接続先の ID（パスワードや信頼した鍵との結び付けに使う）。</summary>
     public Guid Id { get; init; } = Guid.NewGuid();
 
@@ -66,6 +68,16 @@ public sealed record ConnectionProfile
 
     /// <summary>同時に転送する数の上限。</summary>
     public int MaxConcurrency { get; init; } = 3;
+
+    /// <summary>
+    /// この接続先だけで送らない名前。1 行に 1 つ（設定の「送らないファイル」に足して使う。書き方は <see cref="Hakobune.Core.Transfers.ExclusionRules"/>）。
+    /// </summary>
+    public string ExcludePatterns { get; init; } = "";
+
+    /// <summary><see cref="ExcludePatterns"/> を 1 つずつに分けたもの（空の行は除く）。</summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> ExcludePatternList =>
+        [.. ExcludePatterns.Split(LineBreaks, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
 
     /// <summary>実際に使うポート番号。</summary>
     [JsonIgnore]

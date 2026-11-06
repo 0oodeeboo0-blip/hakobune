@@ -101,6 +101,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         LogView = new LogViewModel(Log, _time, _context);
         local.Log = Log;
         remote.Log = Log;
+        local.Exclusions = Settings.Exclusions.ToRules();
         _activePane = local;
         local.IsActive = true;
         local.ActivationRequested += (_, _) => ActivePane = local;
@@ -336,6 +337,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         transfers.IsExpanded = settings.IsTransferListExpanded;
         transfers.PanelHeight = settings.TransferListHeight;
         local.UseCompactRows = remote.UseCompactRows = settings.UseCompactRows;
+        main.UpdateExclusions();
         var localSource = new LocalFileSource(time) { ShowHidden = settings.ShowHiddenFiles };
         var start = settings.LastLocalFolder is { Length: > 0 } last && Directory.Exists(last) ? last : null;
         await local.SetSourceAsync(localSource, start).ConfigureAwait(true);
@@ -350,8 +352,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         ArgumentNullException.ThrowIfNull(settings);
         var hiddenChanged = settings.ShowHiddenFiles != Settings.ShowHiddenFiles;
+        var exclusionsChanged = !Equals(settings.Exclusions, Settings.Exclusions);
         Settings = settings;
         Local.UseCompactRows = Remote.UseCompactRows = settings.UseCompactRows;
+        if (exclusionsChanged)
+            UpdateExclusions();
         if (hiddenChanged && Local.Source is LocalFileSource source)
         {
             source.ShowHidden = settings.ShowHiddenFiles;
@@ -359,6 +364,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         SaveSettings(window: null);
     }
+
+    /// <summary>いま使う送らないファイルの決まり（設定と、つないでいる接続先ごとの名前）。</summary>
+    public ExclusionRules CurrentExclusions => Settings.Exclusions.ToRules(_connected?.Profile.ExcludePatternList);
+
+    // パソコン側の一覧の「送らない」の印を、いまの決まりに合わせる
+    private void UpdateExclusions() => Local.Exclusions = CurrentExclusions;
 
     // 「自動」で決まった方式を、この接続先に覚える（次からはその方式で直接つなぐ。暗号化できたなら、暗号化なしには戻らない）
     private async Task RememberProtocolAsync(ConnectionItemViewModel item, ConnectionProtocol protocol)
@@ -556,6 +567,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             await RememberProtocolAsync(item, result.Profile.Protocol).ConfigureAwait(true);
         _session = result;
         _connected = item;
+        UpdateExclusions();
         item.IsConnected = true;
         IsConnected = true;
         Connection.ShowConnected(item);
@@ -647,6 +659,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var connected = _connected;
         _session = null;
         _connected = null;
+        UpdateExclusions();
         if (connected is not null)
             connected.IsConnected = false;
         IsConnected = false;
@@ -699,9 +712,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         if (_transferController is not { } controller || Local.Source is not { } local || !Remote.HasLoaded)
             return 0;
-        var targets = entries.Where(entry => entry.Type is FileEntryType.File or FileEntryType.Directory).ToList();
-        if (targets.Count == 0)
+        var selected = entries.Where(entry => entry.Type is FileEntryType.File or FileEntryType.Directory).ToList();
+        if (selected.Count == 0)
             return 0;
+        // 送らないファイル（Thumbs.db など）は、選んであっても送らない
+        var exclusions = CurrentExclusions;
+        var targets = selected.Where(entry => exclusions.MatchLast(entry.Name, entry.IsDirectory) is null).ToList();
+        var excludedHere = selected.Count - targets.Count;
+        if (targets.Count == 0)
+        {
+            Local.ShowNotice("送るものがありません", "選んだものは、すべて送らないファイルです", "設定の「送らないファイル」で変えられます");
+            return 0;
+        }
         var remoteFolder = Remote.CurrentPath;
         var conflicts = targets.Where(entry => Remote.HasItemNamed(entry.Name)).Select(entry => entry.Name).ToList();
         if (await ChooseConflictPolicyAsync(TransferDirection.Upload, conflicts).ConfigureAwait(true) is not { } policy)
@@ -710,14 +732,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         TransferPlan plan;
         try
         {
-            plan = await TransferPlanner.PlanUploadAsync(local, targets, remoteFolder, policy).ConfigureAwait(true);
+            plan = await TransferPlanner.PlanUploadAsync(local, targets, remoteFolder, policy, exclusions).ConfigureAwait(true);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Local.ShowNotice("アップロードできませんでした", DisplayText.Describe(FailureClassifier.FromException(ex)));
             return 0;
         }
-        return Enqueue(controller, plan, Local);
+        return Enqueue(controller, plan with { ExcludedCount = plan.ExcludedCount + excludedHere }, Local);
     }
 
     private async Task DownloadEntriesAsync(IReadOnlyList<FileEntry> entries)
@@ -755,9 +777,14 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             controller.Enqueue(plan.Requests);
             var upload = plan.Requests[0].Direction == TransferDirection.Upload;
             var size = plan.Requests.Sum(request => Math.Max(0, request.ExpectedBytes ?? 0));
+            var excluded = plan.ExcludedCount > 0 ? $"。送らないファイル {plan.ExcludedCount:N0} 件を除きました" : "";
             Log.Info(
-                $"{(upload ? "アップロード" : "ダウンロード")}に {plan.Requests.Count} 件を加えました（{DisplayText.Size(size)}）",
+                $"{(upload ? "アップロード" : "ダウンロード")}に {plan.Requests.Count:N0} 件を加えました（{DisplayText.Size(size)}{excluded}）",
                 _connected?.Name);
+        }
+        else if (plan.ExcludedCount > 0)
+        {
+            from.ShowNotice("送るものがありません", "フォルダの中は、すべて送らないファイルです", "設定の「送らないファイル」で変えられます");
         }
         if (plan.UnreadableFolders.Count > 0)
         {
@@ -1112,6 +1139,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         await SaveConnectionsAsync().ConfigureAwait(true);
         if (!wasConnected)
             return;
+        UpdateExclusions();
         if (RequiresReconnect(_session?.Profile, item.Profile))
         {
             // 接続のしかたが変わったので、つなぎ直す

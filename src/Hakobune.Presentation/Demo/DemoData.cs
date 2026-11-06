@@ -3,6 +3,7 @@ using Hakobune.Core.Logging;
 using Hakobune.Core.Transfers;
 using Hakobune.Presentation.Connections;
 using Hakobune.Presentation.Files;
+using Hakobune.Presentation.Settings;
 using Hakobune.Presentation.Transfers;
 
 namespace Hakobune.Presentation.Demo;
@@ -46,6 +47,8 @@ public static class DemoData
         var local = new FilePaneViewModel(PaneKind.Local, time);
         var localSource = new DemoFileSource(LocalFolder, windowsPaths: true, time);
         localSource.AddFolder(LocalFolder, LocalEntries(localSource));
+        // 送らないファイル（Thumbs.db）には印が付く
+        local.Exclusions = new ExclusionSettings().ToRules();
         await local.SetSourceAsync(localSource).ConfigureAwait(true);
         local.Focus("商品写真");
 
@@ -153,6 +156,7 @@ public static class DemoData
         FileEntryAt(source, LocalFolder, "logo.png", 46_800, At(2026, 10, 20, 10, 12)),
         FileEntryAt(source, LocalFolder, "robots.txt", 120, At(2026, 9, 30, 8, 0)),
         FileEntryAt(source, LocalFolder, "sitemap.xml", 3_900, At(2026, 11, 6, 12, 30)),
+        FileEntryAt(source, LocalFolder, "Thumbs.db", 18_432, At(2026, 11, 6, 12, 35)),
         FileEntryAt(source, LocalFolder, "お問い合わせ.html", 12_100, At(2026, 11, 4, 11, 48)),
     ];
 

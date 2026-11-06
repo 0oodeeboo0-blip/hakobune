@@ -1,6 +1,7 @@
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Hakobune.Core.Connections;
+using Hakobune.Core.Transfers;
 
 namespace Hakobune.Presentation.Connections;
 
@@ -40,6 +41,7 @@ public sealed class ConnectionEditorViewModel : ObservableObject
     ];
 
     private static readonly string[] Encodings = ["utf-8", "shift_jis", "euc-jp"];
+    private static readonly char[] LineBreaks = ['\r', '\n'];
 
     private readonly Guid _id;
     private readonly int _maxConcurrency;
@@ -71,7 +73,9 @@ public sealed class ConnectionEditorViewModel : ObservableObject
         LocalDirectory = source.LocalDirectory;
         EncodingIndex = Math.Max(0, Array.IndexOf(Encodings, source.FileNameEncoding.ToLowerInvariant()));
         UsePassiveMode = source.UsePassiveMode;
-        OpensAdvancedSettings = RemoteDirectory.Length > 0 || LocalDirectory.Length > 0 || EncodingIndex != 0 || !UsePassiveMode;
+        ExcludePatterns = string.Join(Environment.NewLine, source.ExcludePatternList);
+        OpensAdvancedSettings = RemoteDirectory.Length > 0 || LocalDirectory.Length > 0 || EncodingIndex != 0 || !UsePassiveMode
+            || ExcludePatterns.Length > 0;
     }
 
     /// <summary>方式の選択肢。</summary>
@@ -207,6 +211,17 @@ public sealed class ConnectionEditorViewModel : ObservableObject
 
     public bool UsePassiveMode { get; set => SetProperty(ref field, value); } = true;
 
+    /// <summary>この接続先だけで送らない名前（1 行に 1 つ。設定の「送らないファイル」に足して使う）。</summary>
+    public string ExcludePatterns
+    {
+        get;
+        set
+        {
+            if (SetProperty(ref field, value ?? ""))
+                OnValidationChanged();
+        }
+    } = "";
+
     /// <summary>入力の問題（なければ空）。</summary>
     public string ValidationMessage
     {
@@ -220,6 +235,11 @@ public sealed class ConnectionEditorViewModel : ObservableObject
                 return "ポート番号は 1〜65535 の数で入れてください";
             if (IsSftp && string.IsNullOrWhiteSpace(UserName))
                 return "SFTP ではユーザー名が要ります";
+            foreach (var pattern in SplitPatterns(ExcludePatterns))
+            {
+                if (ExclusionRules.Validate(pattern) is { } problem)
+                    return $"送らない名前「{pattern}」: {problem}";
+            }
             return "";
         }
     }
@@ -248,7 +268,11 @@ public sealed class ConnectionEditorViewModel : ObservableObject
         FileNameEncoding = Encodings[EncodingIndex],
         UsePassiveMode = UsePassiveMode,
         MaxConcurrency = _maxConcurrency,
+        ExcludePatterns = string.Join('\n', SplitPatterns(ExcludePatterns).Select(ExclusionRules.Normalize)),
     };
+
+    private static IEnumerable<string> SplitPatterns(string text) =>
+        text.Split(LineBreaks, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     /// <summary>入力した内容を結果にする。</summary>
     public ConnectionEditResult ToResult() =>

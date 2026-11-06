@@ -143,6 +143,23 @@ public class ConnectionEditorViewModelTests
     }
 
     [Fact]
+    public void Each_connection_can_add_names_not_to_send()
+    {
+        var editor = new ConnectionEditorViewModel { Host = "example.com", UserName = "web", ExcludePatterns = "config.php\r /cache/ \r\r" };
+
+        Assert.True(editor.IsValid);
+        Assert.Equal("config.php\n/cache/", editor.ToProfile().ExcludePatterns);
+        Assert.Equal(new[] { "config.php", "/cache/" }, editor.ToProfile().ExcludePatternList.ToArray());
+
+        editor.ExcludePatterns = "*";
+        Assert.Equal("送らない名前「*」: * だけの名前は、すべてに当てはまるので使えません", editor.ValidationMessage);
+
+        var reopened = new ConnectionEditorViewModel(new ConnectionProfile { Host = "example.com", ExcludePatterns = "a.txt\nb/" });
+        Assert.True(reopened.OpensAdvancedSettings);
+        Assert.Equal("a.txt" + Environment.NewLine + "b/", reopened.ExcludePatterns);
+    }
+
+    [Fact]
     public void Switching_protocols_changes_the_default_port_and_options()
     {
         var editor = new ConnectionEditorViewModel();

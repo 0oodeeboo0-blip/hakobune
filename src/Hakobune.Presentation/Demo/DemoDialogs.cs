@@ -54,6 +54,9 @@ public enum DemoDialog
 
     /// <summary>設定。</summary>
     Settings,
+
+    /// <summary>設定の「送らないファイル」のところ。</summary>
+    SettingsExclusions,
 }
 
 /// <summary>見本のダイアログに出す中身。</summary>
@@ -139,6 +142,9 @@ public static class DemoDialogs
                 break;
             case DemoDialog.Settings when settingsDialogs is not null && main is not null:
                 await settingsDialogs.ShowSettingsAsync(new SettingsViewModel(main, DataDirectory)).ConfigureAwait(true);
+                break;
+            case DemoDialog.SettingsExclusions when settingsDialogs is not null && main is not null:
+                await settingsDialogs.ShowSettingsAsync(new SettingsViewModel(main, DataDirectory) { OpensAtExclusions = true }).ConfigureAwait(true);
                 break;
             case DemoDialog.NewConnection:
                 await dialogs.EditAsync(null, hasSavedPassword: false).ConfigureAwait(true);

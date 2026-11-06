@@ -199,6 +199,67 @@ public sealed class SettingsTests : IDisposable
     }
 
     [Fact]
+    public async Task Files_not_to_send_can_be_changed_and_are_tried_on_the_open_folder()
+    {
+        var site = MakeFolder("site");
+        File.WriteAllText(Path.Combine(site, "Thumbs.db"), "x");
+        File.WriteAllText(Path.Combine(site, "index.html"), "x");
+        Directory.CreateDirectory(Path.Combine(site, "design"));
+        File.WriteAllText(Path.Combine(site, "design", "banner.psd"), "x");
+        SettingsViewModel? shown = null;
+        var dialogs = new ScriptedSettingsDialogs(settings => shown = settings);
+        using var main = await MainViewModel.CreateAsync(Services(dialogs), settings: new AppSettings { LastLocalFolder = site });
+        Assert.True(main.Local.Items.Single(row => row.Name == "Thumbs.db").IsExcluded);
+
+        await main.OpenSettingsCommand.ExecuteAsync(null);
+        Assert.NotNull(shown);
+        await shown.Previewing;
+        Assert.Equal(site, shown.PreviewFolder);
+        Assert.Equal("1 件を送りません", shown.PreviewText);
+        Assert.Equal("Thumbs.db", Assert.Single(shown.PreviewItems).Path);
+        Assert.Equal(7, shown.ExclusionItems.Count);
+        Assert.Equal("7 件のうち 7 件を使っています", shown.ExclusionSummary);
+        Assert.Equal("このフォルダで 1 件", shown.ExclusionItems[0].HitText);
+        Assert.False(shown.ExclusionItems[0].CanRemove);
+
+        // よく足す名前を押すと足され、当てはめ直す
+        shown.AddSuggestedPatternCommand.Execute("*.psd");
+        await shown.Previewing;
+        Assert.Equal("2 件を送りません", shown.PreviewText);
+        Assert.Equal(@"design\banner.psd", shown.PreviewItems[0].Path);
+        Assert.DoesNotContain("*.psd", shown.SuggestedPatterns);
+
+        // 同じ名前や使えない名前は足せない
+        shown.NewPattern = "*.PSD";
+        shown.AddPatternCommand.Execute(null);
+        Assert.Equal("「*.PSD」はもう入っています", shown.PatternError);
+        shown.NewPattern = "*";
+        shown.AddPatternCommand.Execute(null);
+        Assert.Equal("* だけの名前は、すべてに当てはまるので使えません", shown.PatternError);
+
+        // 使わない名前にすると、パソコン側の一覧の印も消える
+        shown.ExclusionItems.Single(item => item.Pattern == "Thumbs.db").IsEnabled = false;
+        await shown.Applying;
+        Assert.False(main.Local.Items.Single(row => row.Name == "Thumbs.db").IsExcluded);
+
+        // 自分で足した名前は消せる
+        var added = shown.ExclusionItems.Single(item => item.Pattern == "*.psd");
+        Assert.True(added.CanRemove);
+        added.RemoveCommand.Execute(null);
+        await shown.Applying;
+        Assert.DoesNotContain(shown.ExclusionItems, item => item.Pattern == "*.psd");
+
+        var saved = await AppSettings.LoadAsync(SettingsFile, TestContext.Current.CancellationToken);
+        Assert.Equal(7, saved.Exclusions.Patterns.Count);
+        Assert.False(saved.Exclusions.Patterns.Single(pattern => pattern.Pattern == "Thumbs.db").IsEnabled);
+
+        // 最初の状態に戻せる
+        shown.ResetExclusionsCommand.Execute(null);
+        await shown.Applying;
+        Assert.Equal(new ExclusionSettings(), main.Settings.Exclusions);
+    }
+
+    [Fact]
     public async Task Without_a_settings_screen_the_button_does_nothing()
     {
         using var main = await MainViewModel.CreateAsync(Services(), settings: new AppSettings { LastLocalFolder = MakeFolder("site") });

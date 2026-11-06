@@ -82,6 +82,27 @@ public sealed class FilePaneViewModel : ObservableObject
         NavigateToSegmentCommand = new AsyncRelayCommand<PathSegment>(segment => segment is null ? Task.CompletedTask : NavigateAsync(segment.Path));
     }
 
+    /// <summary>
+    /// 送らないファイルの決まり。パソコン側の一覧では、当てはまる行に「送らない」の印を出す（変えると、行を作り直す）。
+    /// </summary>
+    public ExclusionRules Exclusions
+    {
+        get;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            // 同じ名前の並びなら何もしない（つなぐたびに行を作り直して、選択が消えないように）
+            if (ReferenceEquals(field, value) || field.Patterns.SequenceEqual(value.Patterns, StringComparer.OrdinalIgnoreCase))
+                return;
+            field = value;
+            if (Kind != PaneKind.Local || _rows.Count == 0)
+                return;
+            _rows = [.. _rows.Select(row => NewRow(row.Entry))];
+            SelectedRows = [];
+            ApplyView(keepFocus: false);
+        }
+    } = ExclusionRules.None;
+
     /// <summary>取り直しで増えた・変わった行を光らせておく時間（画面の光も、この長さで消える）。</summary>
     public static TimeSpan HighlightDuration { get; } = TimeSpan.FromMilliseconds(3200);
 
@@ -633,7 +654,7 @@ public sealed class FilePaneViewModel : ObservableObject
                 rows.Add(kept);
                 continue;
             }
-            var row = new FileRowViewModel(entry, _time.LocalTimeZone, ShowsPermissions);
+            var row = NewRow(entry);
             rows.Add(row);
             if (samePath)
                 fresh.Add(row);
@@ -642,6 +663,12 @@ public sealed class FilePaneViewModel : ObservableObject
             Highlight(fresh);
         return rows;
     }
+
+    private FileRowViewModel NewRow(FileEntry entry) => new(
+        entry,
+        _time.LocalTimeZone,
+        ShowsPermissions,
+        Kind == PaneKind.Local && entry.Type != FileEntryType.Drive ? Exclusions.MatchName(entry.Name, entry.IsDirectory) : null);
 
     // 光らせ、時間がたったら戻す（そのあとで行が画面に出てきても光らない）
     private void Highlight(List<FileRowViewModel> rows)

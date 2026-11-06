@@ -168,6 +168,21 @@
                     Content="パッシブモードを使う（ふつうは使います）"
                     IsChecked="{x:Bind ViewModel.UsePassiveMode, Mode=TwoWay}"
                     Visibility="{x:Bind ViewModel.IsFtp, Mode=OneWay}" />
+                <StackPanel Spacing="4">
+                    <TextBox
+                        MinHeight="64"
+                        AcceptsReturn="True"
+                        Header="この接続先だけで送らない名前"
+                        IsSpellCheckEnabled="False"
+                        PlaceholderText="1 行に 1 つ（例: config.php、/cache/）"
+                        Text="{x:Bind ViewModel.ExcludePatterns, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        TextWrapping="Wrap" />
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="設定の「送らないファイル」に足して使います。/ で始めると、送るフォルダのすぐ下だけに当てはまります"
+                        TextWrapping="Wrap" />
+                </StackPanel>
             </StackPanel>
         </Expander>
     </StackPanel>

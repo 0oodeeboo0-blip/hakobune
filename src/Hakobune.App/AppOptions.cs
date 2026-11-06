@@ -14,7 +14,7 @@ namespace Hakobune.App;
 /// <item><c>--demo</c>: 見本のデータで画面を出す。<c>--scenario stale</c> で、一覧の更新に失敗した場面にする。
 /// <c>--scenario refreshed</c> で、アップロードのあとに一覧を取り直した場面にする（増えた・変わった行が光っているところを撮る）。</item>
 /// <item><c>--dialog 名前</c>: 見本のダイアログを出す（new、edit、quick、password、passphrase、hostkey、hostkey-changed、certificate、delete、
-/// rename、delete-files、permissions、conflict、stop、settings）。</item>
+/// rename、delete-files、permissions、conflict、stop、settings、settings-exclusions）。</item>
 /// <item><c>--theme light|dark</c>: ライト・ダークを決める（省くと Windows の設定に合わせる）。</item>
 /// <item><c>--log</c>: 下の一覧で「ログ」を出しておく。</item>
 /// <item><c>--screenshot ファイル名</c>: 画面写真を PNG で保存して終わる。</item>
@@ -95,6 +95,7 @@ internal sealed record AppOptions
                             "conflict" => DemoDialog.Conflict,
                             "stop" => DemoDialog.StopTransfers,
                             "settings" => DemoDialog.Settings,
+                            "settings-exclusions" => DemoDialog.SettingsExclusions,
                             _ => null,
                         },
                     };
