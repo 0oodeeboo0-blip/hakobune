@@ -505,6 +505,7 @@ public class TransferSchedulerTests
         var emptyLocal = Path.Combine(temp.Path, "uploads");
         Directory.CreateDirectory(emptyLocal);
         var server = new FakeServer();
+        server.Files.CreateDirectory("/www");
         server.Files.WriteFile("/www/uploads", [1, 2, 3], 0, DateTimeOffset.UtcNow);
         var scheduler = new TransferScheduler(server, FastOptions());
         scheduler.Enqueue([new TransferRequest(TransferDirection.Upload, emptyLocal, "/www/uploads", IsFolder: true)]);

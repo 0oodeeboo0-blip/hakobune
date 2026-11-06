@@ -318,9 +318,9 @@ jobs:
             exit 1
           }
 
-          # 送るフォルダ（日本語の名前と、入れ子のフォルダを含む）
+          # 送るフォルダ（日本語の名前と、入れ子のフォルダと、空のフォルダを含む）
           $upload = Join-Path $env:RUNNER_TEMP '公開用'
-          New-Item -ItemType Directory -Force (Join-Path $upload '画像'), (Join-Path $upload 'css') | Out-Null
+          New-Item -ItemType Directory -Force (Join-Path $upload '画像'), (Join-Path $upload 'css'), (Join-Path $upload '空のフォルダ') | Out-Null
           $sent = [ordered]@{
             'トップページ.html' = 20480; 'about.html' = 4096; 'css\site.css' = 2048
             '画像\商品_01.jpg' = 1048576; '画像\商品_02.jpg' = 786432; '画像\ロゴ.png' = 30000
@@ -372,6 +372,12 @@ jobs:
             } else {
               Write-Host "届きました: $name ($((Get-Item $remote).Length) バイト)"
             }
+          }
+          if (-not (Test-Path (Join-Path $root '公開用\空のフォルダ') -PathType Container)) {
+            Write-Host '::error::空のフォルダがサーバーに作られていません'
+            $failed = $true
+          } else {
+            Write-Host '届きました: 空のフォルダ'
           }
           if ($failed) {
             exit 1
