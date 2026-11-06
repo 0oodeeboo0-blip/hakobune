@@ -47,6 +47,9 @@ public enum FailureReason
     /// <summary>同じ名前のフォルダがあるため、ファイルを置けない。</summary>
     NameConflictsWithDirectory,
 
+    /// <summary>同じ名前のファイルがあるため、フォルダを作れない。</summary>
+    NameConflictsWithFile,
+
     /// <summary>ログインできない。</summary>
     AuthenticationFailed,
 

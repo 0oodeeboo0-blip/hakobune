@@ -29,10 +29,41 @@ internal sealed class TransferExecutor(TransferOptions options)
 {
     private const int BufferSize = 81920;
 
-    public Task<ExecutionResult> ExecuteAsync(TransferItem item, IRemoteSession session, ITransferSink sink, CancellationToken cancellationToken) =>
-        item.Request.Direction == TransferDirection.Upload
+    public Task<ExecutionResult> ExecuteAsync(TransferItem item, IRemoteSession session, ITransferSink sink, CancellationToken cancellationToken)
+    {
+        if (item.Request.IsFolder)
+            return CreateFolderAsync(item, session, sink, cancellationToken);
+        return item.Request.Direction == TransferDirection.Upload
             ? UploadAsync(item, session, sink, cancellationToken)
             : DownloadAsync(item, session, sink, cancellationToken);
+    }
+
+    // 空のフォルダを、送り先にも作る（すでにあれば何もしない）
+    private static async Task<ExecutionResult> CreateFolderAsync(TransferItem item, IRemoteSession session, ITransferSink sink, CancellationToken cancellationToken)
+    {
+        var request = item.Request;
+        sink.SetTotalBytes(item, 0);
+        if (request.Direction == TransferDirection.Upload)
+        {
+            if (!Directory.Exists(request.LocalPath))
+                throw new DirectoryNotFoundException($"パソコン側のフォルダが見つかりません: {request.LocalPath}");
+            var existing = await session.GetItemAsync(request.RemotePath, cancellationToken).ConfigureAwait(false);
+            if (existing is { IsDirectory: false })
+                throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.NameConflictsWithFile, request.RemotePath));
+            if (existing is null)
+                await sink.EnsureRemoteDirectoryAsync(session, request.RemotePath, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            var remote = await session.GetItemAsync(request.RemotePath, cancellationToken).ConfigureAwait(false);
+            if (remote is not { IsDirectory: true })
+                throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.NotFound, request.RemotePath));
+            if (File.Exists(request.LocalPath))
+                throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.NameConflictsWithFile, request.LocalPath));
+            Directory.CreateDirectory(request.LocalPath);
+        }
+        return ExecutionResult.Completed(sizeVerified: false);
+    }
 
     private async Task<ExecutionResult> UploadAsync(TransferItem item, IRemoteSession session, ITransferSink sink, CancellationToken cancellationToken)
     {

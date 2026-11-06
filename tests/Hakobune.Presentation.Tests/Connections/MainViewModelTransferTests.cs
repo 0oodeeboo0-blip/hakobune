@@ -105,6 +105,28 @@ public sealed class MainViewModelTransferTests : IDisposable
     }
 
     [Fact]
+    public async Task Empty_folders_are_made_on_the_other_side_too()
+    {
+        Directory.CreateDirectory(Path.Combine(LocalFolder, "uploads"));
+        WriteLocal(Path.Combine("css", "site.css"), "body {}");
+        _server.Folders["/home/web"].Add(new RemoteItem("cache", "/home/web/cache", RemoteItemType.Directory, 0, DateTimeOffset.UtcNow));
+        _server.Folders["/home/web/cache"] = [];
+        using var main = await ConnectAsync();
+        await main.Local.RefreshAsync();
+
+        main.Local.UpdateSelection([.. main.Local.Items]);
+        await main.UploadCommand.ExecuteAsync(null);
+        await WaitForAsync(() => main.PendingTransferCount == 0 && main.Transfers.TotalCount == 2 && main.Transfers.CompletedCount == 2);
+        Assert.Contains("mkdir /home/web/uploads", _server.Operations);
+        Assert.Equal("body {}", Encoding.UTF8.GetString(_server.Files["/home/web/css/site.css"]));
+        Assert.Contains(main.Transfers.Rows, row => row.IsFolder && row.Name == "uploads");
+
+        main.Remote.UpdateSelection([main.Remote.Items.Single(row => row.Name == "cache")]);
+        await main.DownloadCommand.ExecuteAsync(null);
+        await WaitForAsync(() => Directory.Exists(Path.Combine(LocalFolder, "cache")));
+    }
+
+    [Fact]
     public async Task Selected_server_files_are_downloaded_to_the_open_local_folder()
     {
         using var main = await ConnectAsync();

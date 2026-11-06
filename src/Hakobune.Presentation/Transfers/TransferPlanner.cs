@@ -5,13 +5,14 @@ using Hakobune.Presentation.Files;
 namespace Hakobune.Presentation.Transfers;
 
 /// <summary>選んだファイルとフォルダから作った、転送の依頼。</summary>
-/// <param name="Requests">送る（受け取る）ファイル。</param>
+/// <param name="Requests">送る（受け取る）ファイルと、空のフォルダ。</param>
 /// <param name="UnreadableFolders">中を見られなかったフォルダ。</param>
 /// <param name="TooMany">多すぎて途中までにしたか。</param>
 public sealed record TransferPlan(IReadOnlyList<TransferRequest> Requests, IReadOnlyList<string> UnreadableFolders, bool TooMany);
 
 /// <summary>
-/// 選んだファイルとフォルダから、転送の依頼を作る。フォルダは中をたどり、同じ形で送り先に作る。
+/// 選んだファイルとフォルダから、転送の依頼を作る。フォルダは中をたどり、同じ形で送り先に作る
+/// （中身のあるフォルダはファイルを送るときに作られるので、空のフォルダだけ「フォルダを作る」依頼にする）。
 /// 一覧は画面と同じもの（<see cref="IFileSource"/>）で取るので、隠しファイルなど画面に出ないものは送らない。
 /// </summary>
 public static class TransferPlanner
@@ -32,6 +33,7 @@ public static class TransferPlanner
             remoteFolder,
             RemotePath.Combine,
             (entry, target) => new TransferRequest(TransferDirection.Upload, entry.FullPath, target, onConflict, entry.Size),
+            (entry, target) => new TransferRequest(TransferDirection.Upload, entry.FullPath, target, onConflict, 0, IsFolder: true),
             // パソコン側のリンク（ジャンクションなど）はたどらない（同じ場所を何度も回らないように）
             followLinks: false,
             cancellationToken);
@@ -50,6 +52,7 @@ public static class TransferPlanner
             localFolder,
             (folder, name) => Path.Combine(folder, ToLocalName(name)),
             (entry, target) => new TransferRequest(TransferDirection.Download, target, entry.FullPath, onConflict, entry.Size),
+            (entry, target) => new TransferRequest(TransferDirection.Download, target, entry.FullPath, onConflict, 0, IsFolder: true),
             // サーバーのリンクは、たいていファイルを指すので、ファイルとして受け取る
             followLinks: true,
             cancellationToken);
@@ -77,6 +80,7 @@ public static class TransferPlanner
         string destination,
         Func<string, string, string> combine,
         Func<FileEntry, string, TransferRequest> request,
+        Func<FileEntry, string, TransferRequest> folderRequest,
         bool followLinks,
         CancellationToken cancellationToken)
     {
@@ -108,6 +112,14 @@ public static class TransferPlanner
                     if (!listing.Succeeded)
                     {
                         unreadable.Add(entry.FullPath);
+                        break;
+                    }
+                    if (listing.Entries.Count == 0)
+                    {
+                        // 空のフォルダも、送り先に作る
+                        if (requests.Count >= MaxFiles)
+                            return new TransferPlan(requests, unreadable, TooMany: true);
+                        requests.Add(folderRequest(entry, target));
                         break;
                     }
                     // 名前の順に送る（一覧で見た順と同じに）

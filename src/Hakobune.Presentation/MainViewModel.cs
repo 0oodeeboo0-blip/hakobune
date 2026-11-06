@@ -334,6 +334,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         main.Settings = settings;
         main.IsSidebarOpen = settings.IsSidebarOpen;
         transfers.IsExpanded = settings.IsTransferListExpanded;
+        transfers.PanelHeight = settings.TransferListHeight;
         local.UseCompactRows = remote.UseCompactRows = settings.UseCompactRows;
         var localSource = new LocalFileSource(time) { ShowHidden = settings.ShowHiddenFiles };
         var start = settings.LastLocalFolder is { Length: > 0 } last && Directory.Exists(last) ? last : null;
@@ -395,6 +396,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             LastLocalFolder = Local.HasLoaded && Local.CurrentPath.Length > 0 ? Local.CurrentPath : Settings.LastLocalFolder,
             IsSidebarOpen = IsSidebarOpen,
             IsTransferListExpanded = Transfers.IsExpanded,
+            TransferListHeight = Transfers.PanelHeight,
         };
         AppSettings.TrySave(_services.SettingsFile, Settings);
     }

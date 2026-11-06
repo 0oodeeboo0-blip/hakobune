@@ -21,6 +21,29 @@ public sealed partial class MainView : UserControl
         TransferPanel.ViewModel = viewModel.Transfers;
         TransferPanel.Log = viewModel.LogView;
         TransferPanel.FilesDropped += OnTransferPanelFilesDropped;
+        TransferSplitter.Dragged += OnTransferSplitterDragged;
+        ContentArea.SizeChanged += (_, _) => ClampTransferPanel();
+    }
+
+    // ファイルの一覧に残す高さ（見出しと数行）
+    private const double MinPaneHeight = 220;
+
+    // 境目を上へ動かすと、転送の一覧が高くなる
+    private void OnTransferSplitterDragged(object? sender, double deltaY)
+    {
+        ViewModel.Transfers.PanelHeight -= deltaY;
+        ClampTransferPanel();
+    }
+
+    // ウインドウを小さくしても、ファイルの一覧が隠れないようにする
+    private void ClampTransferPanel()
+    {
+        var available = ContentArea.ActualHeight - ContentArea.Padding.Top - ContentArea.Padding.Bottom - ContentArea.RowSpacing - MinPaneHeight;
+        if (available <= 0)
+            return;
+        var max = Math.Max(Hakobune.Presentation.Transfers.TransferListViewModel.MinPanelHeight, available);
+        if (ViewModel.Transfers.PanelHeight > max)
+            ViewModel.Transfers.PanelHeight = max;
     }
 
     public MainViewModel ViewModel { get; }

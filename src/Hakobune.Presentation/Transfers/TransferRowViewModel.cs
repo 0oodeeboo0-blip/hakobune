@@ -39,8 +39,11 @@ public sealed class TransferRowViewModel : ObservableObject
     /// <summary>向きの名前（読み上げ用）。</summary>
     public string DirectionLabel => IsUpload ? "アップロード" : "ダウンロード";
 
-    /// <summary>ファイル名。</summary>
+    /// <summary>ファイル名（空のフォルダを作る依頼なら、フォルダの名前）。</summary>
     public string Name { get; }
+
+    /// <summary>空のフォルダを作る依頼か。</summary>
+    public bool IsFolder => Snapshot.IsFolder;
 
     /// <summary>送り先のフォルダ（例: → /var/www/html）。</summary>
     public string Destination { get; }
@@ -216,6 +219,8 @@ public sealed class TransferRowViewModel : ObservableObject
     private static string CompletedDetail(TransferItemSnapshot snapshot, TimeZoneInfo timeZone)
     {
         var parts = new List<string>(3);
+        if (snapshot.IsFolder)
+            parts.Add("フォルダを作成");
         if (snapshot.SizeVerified)
             parts.Add("サイズ照合OK");
         if (snapshot.FailedAttempts > 0)

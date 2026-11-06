@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:conn="using:Hakobune.Presentation.Connections"
+    xmlns:controls="using:Hakobune.App.Controls"
     xmlns:helpers="using:Hakobune.App.Helpers"
     xmlns:views="using:Hakobune.App.Views"
     Language="ja-JP">
@@ -641,6 +642,7 @@
             </Grid>
 
             <Grid
+                x:Name="ContentArea"
                 Grid.Column="1"
                 Padding="{x:Bind helpers:Ui.ContentPadding(ViewModel.IsSidebarOpen), Mode=OneWay}"
                 RowSpacing="12">
@@ -657,6 +659,15 @@
                     <views:FilePaneView x:Name="RemotePane" Grid.Column="1" />
                 </Grid>
                 <views:TransferPanelView x:Name="TransferPanel" Grid.Row="1" />
+                <!--  境目（上下にドラッグして、転送の一覧の高さを変える）  -->
+                <controls:SplitterBar
+                    x:Name="TransferSplitter"
+                    Grid.Row="1"
+                    Height="12"
+                    Margin="0,-12,0,0"
+                    VerticalAlignment="Top"
+                    ToolTipService.ToolTip="ドラッグして高さを変える"
+                    Visibility="{x:Bind ViewModel.Transfers.IsExpanded, Mode=OneWay}" />
             </Grid>
         </Grid>
 

@@ -117,6 +117,16 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
     /// <summary>開閉のボタンの矢印の向き（度）。</summary>
     public double ExpandGlyphRotation => IsExpanded ? 0 : 180;
 
+    /// <summary>広げたときの高さの最小（見出しと 2 行ほど）。</summary>
+    public const double MinPanelHeight = 150;
+
+    /// <summary>広げたときの高さ（境目をつかんで変える。設定に残る）。</summary>
+    public double PanelHeight
+    {
+        get;
+        set => SetProperty(ref field, double.IsFinite(value) ? Math.Max(MinPanelHeight, Math.Round(value)) : 244);
+    } = 244;
+
     /// <summary>項目の総数。</summary>
     public int TotalCount { get; private set => SetProperty(ref field, value); }
 

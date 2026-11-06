@@ -26,7 +26,7 @@ public static class Ui
     public static Thickness ContentPadding(bool isSidebarOpen) => new(isSidebarOpen ? 4 : 12, 0, 12, 12);
 
     /// <summary>転送の一覧の高さ（たたんだときは見出しだけ）。</summary>
-    public static double TransferPanelHeight(bool isExpanded) => isExpanded ? 244 : 50;
+    public static double TransferPanelHeight(bool isExpanded, double height) => isExpanded ? height : 50;
 
     /// <summary>転送の一覧の見出しの下線（たたんだときは出さない）。</summary>
     public static Thickness BottomLine(bool isExpanded) => new(0, 0, 0, isExpanded ? 1 : 0);

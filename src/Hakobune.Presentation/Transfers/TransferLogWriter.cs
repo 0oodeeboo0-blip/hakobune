@@ -55,12 +55,16 @@ internal sealed class TransferLogWriter
                     _completed++;
                     _bytes += Math.Max(0, item.TotalBytes);
                 }
-                _log.Success($"{(upload ? "送りました" : "受け取りました")}: {target}（{DisplayText.Size(Math.Max(0, item.TotalBytes))}）", _source);
+                if (item.IsFolder)
+                    _log.Success($"フォルダを作りました: {target}", _source);
+                else
+                    _log.Success($"{(upload ? "送りました" : "受け取りました")}: {target}（{DisplayText.Size(Math.Max(0, item.TotalBytes))}）", _source);
                 break;
             case TransferState.Failed:
                 lock (_gate)
                     _failed++;
-                _log.Error($"{(upload ? "送れませんでした" : "受け取れませんでした")}: {target}: {Reason(item)}", _source);
+                var failed = item.IsFolder ? "フォルダを作れませんでした" : upload ? "送れませんでした" : "受け取れませんでした";
+                _log.Error($"{failed}: {target}: {Reason(item)}", _source);
                 break;
             case TransferState.WaitingToRetry:
                 _log.Warning($"やり直します（{item.FailedAttempts}/{_maxAttempts} 回目の失敗）: {target}: {Reason(item)}", _source);

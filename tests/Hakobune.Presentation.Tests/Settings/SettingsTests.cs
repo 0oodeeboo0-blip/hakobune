@@ -1,5 +1,6 @@
 using Hakobune.Presentation.Connections;
 using Hakobune.Presentation.Settings;
+using Hakobune.Presentation.Transfers;
 using Hakobune.Presentation.Tests.Connections;
 
 namespace Hakobune.Presentation.Tests.Settings;
@@ -51,6 +52,7 @@ public sealed class SettingsTests : IDisposable
             LastLocalFolder = @"C:\Users\user\Sites\shop",
             IsSidebarOpen = false,
             IsTransferListExpanded = false,
+            TransferListHeight = 320,
         };
 
         Assert.True(AppSettings.TrySave(SettingsFile, saved));
@@ -75,13 +77,21 @@ public sealed class SettingsTests : IDisposable
     public async Task The_last_screen_comes_back()
     {
         var folder = MakeFolder("site");
-        var settings = new AppSettings { LastLocalFolder = folder, IsSidebarOpen = false, IsTransferListExpanded = false, UseCompactRows = true };
+        var settings = new AppSettings
+        {
+            LastLocalFolder = folder,
+            IsSidebarOpen = false,
+            IsTransferListExpanded = false,
+            UseCompactRows = true,
+            TransferListHeight = 360,
+        };
 
         using var main = await MainViewModel.CreateAsync(Services(), settings: settings);
 
         Assert.Equal(folder, main.Local.CurrentPath);
         Assert.False(main.IsSidebarOpen);
         Assert.False(main.Transfers.IsExpanded);
+        Assert.Equal(360, main.Transfers.PanelHeight);
         Assert.True(main.Local.UseCompactRows);
         Assert.True(main.Remote.UseCompactRows);
     }
@@ -103,6 +113,8 @@ public sealed class SettingsTests : IDisposable
         using var main = await MainViewModel.CreateAsync(Services(), settings: new AppSettings { LastLocalFolder = folder });
         main.ToggleSidebarCommand.Execute(null);
         main.Transfers.IsExpanded = false;
+        // 低すぎる高さにはしない
+        main.Transfers.PanelHeight = 40;
 
         main.SaveSettings(new WindowPlacement(100, 50, 1300, 860, IsMaximized: false));
 
@@ -110,6 +122,7 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal(folder, saved.LastLocalFolder);
         Assert.False(saved.IsSidebarOpen);
         Assert.False(saved.IsTransferListExpanded);
+        Assert.Equal(TransferListViewModel.MinPanelHeight, saved.TransferListHeight);
         Assert.Equal(new WindowPlacement(100, 50, 1300, 860, false), saved.Window);
 
         // ウインドウの位置を渡さなければ、前回のままにする

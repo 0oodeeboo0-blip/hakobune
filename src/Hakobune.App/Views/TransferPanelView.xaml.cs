@@ -47,8 +47,22 @@ public sealed partial class TransferPanelView : UserControl
         set => SetValue(LogProperty, value);
     }
 
-    private static void OnViewModelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
-        ((TransferPanelView)d).Bindings.Update();
+    private static void OnViewModelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var view = (TransferPanelView)d;
+        if (e.OldValue is TransferListViewModel oldModel)
+            oldModel.PropertyChanged -= view.OnViewModelPropertyChanged;
+        if (e.NewValue is TransferListViewModel newModel)
+            newModel.PropertyChanged += view.OnViewModelPropertyChanged;
+        view.Bindings.Update();
+    }
+
+    // 「ログ」を開いたら（メニューや起動の指定からでも）、いちばん新しい行を見せる
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(TransferListViewModel.IsLogSelected) && ViewModel is { IsLogSelected: true })
+            ScrollLogToEnd();
+    }
 
     private static void OnLogChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
@@ -60,11 +74,7 @@ public sealed partial class TransferPanelView : UserControl
         view.Bindings.Update();
     }
 
-    private void OnLogTabClick(object sender, RoutedEventArgs e)
-    {
-        ViewModel?.SelectLog();
-        ScrollLogToEnd();
-    }
+    private void OnLogTabClick(object sender, RoutedEventArgs e) => ViewModel?.SelectLog();
 
     // 新しい行が増えた。いちばん下を見ていたら、ついていく（上を見ているあいだは動かさない）
     private void OnLogRowsAppended(object? sender, EventArgs e)

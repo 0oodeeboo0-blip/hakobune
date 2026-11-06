@@ -56,12 +56,14 @@ public enum ConflictPolicy
 /// <param name="RemotePath">サーバー側のパス。</param>
 /// <param name="OnConflict">転送先に同じ名前のファイルがあるときの扱い。</param>
 /// <param name="ExpectedBytes">わかっていればファイルの大きさ（始まる前から残り時間を出すため）。</param>
+/// <param name="IsFolder">ファイルではなく、空のフォルダを作る依頼か（中身のあるフォルダは、ファイルを送るときに作られる）。</param>
 public sealed record TransferRequest(
     TransferDirection Direction,
     string LocalPath,
     string RemotePath,
     ConflictPolicy OnConflict = ConflictPolicy.Overwrite,
-    long? ExpectedBytes = null);
+    long? ExpectedBytes = null,
+    bool IsFolder = false);
 
 /// <summary>
 /// 送信待ちの 1 件の、ある時点の様子。画面に出すために使う。
@@ -82,7 +84,8 @@ public sealed record TransferItemSnapshot(
     long TransferredBytes,
     string? Note,
     bool SizeVerified = false,
-    DateTimeOffset? FinishedAt = null);
+    DateTimeOffset? FinishedAt = null,
+    bool IsFolder = false);
 
 /// <summary>送信待ち全体の件数。</summary>
 public sealed record TransferSummary(

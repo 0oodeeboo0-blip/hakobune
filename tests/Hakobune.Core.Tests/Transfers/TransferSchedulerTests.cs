@@ -473,6 +473,49 @@ public class TransferSchedulerTests
     }
 
     [Fact]
+    public async Task Empty_folders_are_created_on_both_sides()
+    {
+        using var temp = new TempDirectory();
+        var emptyLocal = Path.Combine(temp.Path, "site", "uploads");
+        Directory.CreateDirectory(emptyLocal);
+        var server = new FakeServer();
+        server.Files.CreateDirectory("/www/cache/空");
+        var downloaded = Path.Combine(temp.Path, "back", "cache", "空");
+        var scheduler = new TransferScheduler(server, FastOptions());
+        scheduler.Enqueue(
+        [
+            new TransferRequest(TransferDirection.Upload, emptyLocal, "/www/site/uploads", IsFolder: true),
+            new TransferRequest(TransferDirection.Download, downloaded, "/www/cache/空", IsFolder: true),
+        ]);
+
+        var result = await scheduler.RunAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.Summary.Completed);
+        Assert.True(server.Files.GetItem("/www/site/uploads")?.IsDirectory);
+        Assert.True(Directory.Exists(downloaded));
+        Assert.All(scheduler.GetItems(), item => Assert.True(item.IsFolder));
+        // 保存して読み戻しても、フォルダの依頼のまま
+        Assert.All(scheduler.SaveState(), item => Assert.True(item.IsFolder));
+    }
+
+    [Fact]
+    public async Task A_file_with_the_same_name_stops_the_folder()
+    {
+        using var temp = new TempDirectory();
+        var emptyLocal = Path.Combine(temp.Path, "uploads");
+        Directory.CreateDirectory(emptyLocal);
+        var server = new FakeServer();
+        server.Files.WriteFile("/www/uploads", [1, 2, 3], 0, DateTimeOffset.UtcNow);
+        var scheduler = new TransferScheduler(server, FastOptions());
+        scheduler.Enqueue([new TransferRequest(TransferDirection.Upload, emptyLocal, "/www/uploads", IsFolder: true)]);
+
+        var result = await scheduler.RunAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.Summary.Failed);
+        Assert.Equal(FailureReason.NameConflictsWithFile, scheduler.GetItems()[0].LastFailure?.Reason);
+    }
+
+    [Fact]
     public async Task Cancelled_waiting_items_are_not_sent()
     {
         using var temp = new TempDirectory();

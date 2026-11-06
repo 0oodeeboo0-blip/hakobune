@@ -57,7 +57,8 @@ internal sealed class TransferItem(long sequence, TransferRequest request)
         TransferredBytes,
         Note,
         SizeVerified,
-        FinishedAt);
+        FinishedAt,
+        Request.IsFolder);
 }
 
 /// <summary>IProgress を、呼ばれたその場で処理する。</summary>

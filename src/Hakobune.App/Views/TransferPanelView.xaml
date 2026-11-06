@@ -8,7 +8,7 @@
     xmlns:transfers="using:Hakobune.Presentation.Transfers">
 
     <Grid
-        Height="{x:Bind helpers:Ui.TransferPanelHeight(ViewModel.IsExpanded), Mode=OneWay}"
+        Height="{x:Bind helpers:Ui.TransferPanelHeight(ViewModel.IsExpanded, ViewModel.PanelHeight), Mode=OneWay}"
         AllowDrop="True"
         DragOver="OnDragOver"
         Drop="OnDrop"
