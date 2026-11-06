@@ -33,6 +33,8 @@ jobs:
   app:
     name: アプリのビルド (Windows x64)
     runs-on: windows-latest
+    permissions:
+      contents: write # 画面写真を screenshots ブランチに置くため
     steps:
       - uses: actions/checkout@v6
 
@@ -79,3 +81,23 @@ jobs:
           name: screenshots
           path: screenshots
           if-no-files-found: ignore
+
+      # main の最新の画面写真を screenshots ブランチに置く（毎回上書き）。GitHub 上でも見られる。
+      - name: 画面写真を screenshots ブランチに置く
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'screenshots-branch'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item screenshots\* $dir
+          $sha = $env:GITHUB_SHA.Substring(0, 7)
+          Set-Content -Path (Join-Path $dir 'README.md') -Encoding utf8 -Value "# 画面写真`n`nCI が自動で撮った、main の最新（$sha）の画面写真です。"
+          Set-Location $dir
+          git init -q -b screenshots
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -q -m "Screenshots for $sha"
+          git push -q -f "https://x-access-token:$env:GH_TOKEN@github.com/$env:GITHUB_REPOSITORY.git" screenshots
