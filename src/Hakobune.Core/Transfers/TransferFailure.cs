@@ -44,8 +44,23 @@ public enum FailureReason
     /// <summary>ファイルを作れない。名前が使えない場合と権限がない場合があり、サーバーによって意味が違う。</summary>
     CannotCreateFile,
 
+    /// <summary>同じ名前のフォルダがあるため、ファイルを置けない。</summary>
+    NameConflictsWithDirectory,
+
     /// <summary>ログインできない。</summary>
     AuthenticationFailed,
+
+    /// <summary>送った（受け取った）あとの照合で、大きさが合わなかった。</summary>
+    VerificationFailed,
+
+    /// <summary>パソコン側のファイルが見つからない。</summary>
+    LocalFileNotFound,
+
+    /// <summary>パソコン側のファイルやフォルダにアクセスできない。</summary>
+    LocalAccessDenied,
+
+    /// <summary>パソコン側の読み書きで一時的なエラーが起きた（ほかのアプリが使用中など）。</summary>
+    LocalIoError,
 
     /// <summary>上のどれにも当てはまらない。</summary>
     Unknown,
@@ -57,7 +72,7 @@ public enum FailureReason
 /// <param name="Reason">失敗の理由。</param>
 /// <param name="Kind">やり直す価値があるか。</param>
 /// <param name="ReplyCode">サーバーの応答コード（FTP のときのみ）。</param>
-/// <param name="ServerMessage">サーバーが返した文言（あれば）。</param>
+/// <param name="ServerMessage">サーバーが返した文言など、詳しい説明（あれば）。</param>
 public sealed record TransferFailure(
     FailureReason Reason,
     FailureKind Kind,
@@ -66,4 +81,12 @@ public sealed record TransferFailure(
 {
     /// <summary>やり直せば成功する見込みがあるか。</summary>
     public bool IsTransient => Kind == FailureKind.Transient;
+
+    /// <summary>一時的な失敗を作る。</summary>
+    public static TransferFailure Transient(FailureReason reason, string? message = null) =>
+        new(reason, FailureKind.Transient, null, message);
+
+    /// <summary>やり直しても変わらない失敗を作る。</summary>
+    public static TransferFailure Permanent(FailureReason reason, string? message = null) =>
+        new(reason, FailureKind.Permanent, null, message);
 }
