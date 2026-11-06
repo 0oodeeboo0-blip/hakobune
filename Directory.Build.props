@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <Product>Hakobune</Product>
+    <Company>Hakobune contributors</Company>
+    <Copyright>Copyright (c) 2026 Hakobune contributors</Copyright>
+    <NeutralLanguage>ja-JP</NeutralLanguage>
+  </PropertyGroup>
+</Project>
