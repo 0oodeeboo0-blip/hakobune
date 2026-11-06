@@ -9,6 +9,8 @@ namespace Hakobune.Presentation;
 /// <summary>メイン画面全体。</summary>
 public sealed class MainViewModel : ObservableObject, IDisposable
 {
+    private FilePaneViewModel _activePane;
+
     /// <summary>部品を組み合わせて作る。</summary>
     public MainViewModel(
         FilePaneViewModel local,
@@ -27,7 +29,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Transfers = transfers;
         Connections = connections;
         Connection = connection;
+        _activePane = local;
+        local.IsActive = true;
+        local.ActivationRequested += (_, _) => ActivePane = local;
+        remote.ActivationRequested += (_, _) => ActivePane = remote;
         ToggleSidebarCommand = new RelayCommand(() => IsSidebarOpen = !IsSidebarOpen);
+        RefreshCommand = new AsyncRelayCommand(() => ActivePane.RefreshAsync());
     }
 
     /// <summary>パソコン側の一覧。</summary>
@@ -45,10 +52,27 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>いまの接続の様子。</summary>
     public ConnectionStatusViewModel Connection { get; }
 
+    /// <summary>ツールバーの操作が効く側（最後に触った側）。</summary>
+    public FilePaneViewModel ActivePane
+    {
+        get => _activePane;
+        private set
+        {
+            var previous = _activePane;
+            if (!SetProperty(ref _activePane, value))
+                return;
+            previous.IsActive = false;
+            value.IsActive = true;
+        }
+    }
+
     /// <summary>接続先の一覧を開いているか。</summary>
     public bool IsSidebarOpen { get; set => SetProperty(ref field, value); } = true;
 
     public IRelayCommand ToggleSidebarCommand { get; }
+
+    /// <summary>操作の対象の側の一覧を取り直す（ツールバーの「更新」）。</summary>
+    public IAsyncRelayCommand RefreshCommand { get; }
 
     /// <summary>
     /// ふだんの起動のときの画面。パソコン側はホームフォルダを開き、サーバー側は接続していない状態にする。

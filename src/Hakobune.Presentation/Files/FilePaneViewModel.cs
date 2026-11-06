@@ -76,6 +76,12 @@ public sealed class FilePaneViewModel : ObservableObject
     /// <summary>一覧を出す相手があるか（サーバー側は接続しているか）。</summary>
     public bool HasSource => _source is not null;
 
+    /// <summary>操作の対象になっている側か（最後に触った側）。ツールバーの操作はこちらに効く。</summary>
+    public bool IsActive { get; internal set => SetProperty(ref field, value); }
+
+    /// <summary>画面でこちら側に触れた（フォーカスが来た）。</summary>
+    public event EventHandler? ActivationRequested;
+
     /// <summary>今のフォルダ。</summary>
     public string CurrentPath { get; private set => SetProperty(ref field, value); } = "";
 
@@ -174,11 +180,25 @@ public sealed class FilePaneViewModel : ObservableObject
     /// <summary>お知らせ（InfoBar）を出しているか。</summary>
     public bool HasMessage { get; private set => SetProperty(ref field, value); }
 
-    /// <summary>お知らせの見出し。</summary>
+    /// <summary>お知らせの見出し（何が起きたか）。</summary>
     public string MessageTitle { get; private set => SetProperty(ref field, value); } = "";
 
-    /// <summary>お知らせの本文。</summary>
-    public string MessageText { get; private set => SetProperty(ref field, value); } = "";
+    /// <summary>お知らせの理由（例: 接続が切れました）。見出しの横に出す。</summary>
+    public string MessageReason { get; private set => SetProperty(ref field, value); } = "";
+
+    /// <summary>お知らせの本文（いまの様子。例: 前回の一覧を表示しています）。</summary>
+    public string MessageText
+    {
+        get;
+        private set
+        {
+            if (SetProperty(ref field, value))
+                OnPropertyChanged(nameof(HasMessageText));
+        }
+    } = "";
+
+    /// <summary>お知らせの本文があるか。</summary>
+    public bool HasMessageText => MessageText.Length > 0;
 
     /// <summary>
     /// 一覧を出したあとに選んで見える位置に出す行（上のフォルダに戻ったときの元のフォルダなど）。画面が読んで使う。
@@ -287,7 +307,7 @@ public sealed class FilePaneViewModel : ObservableObject
             if (ReferenceEquals(source, _source))
             {
                 IsLoading = false;
-                ShowMessage("一覧を取得できませんでした", DisplayText.Describe(FailureClassifier.FromException(ex)));
+                ShowMessage("一覧を取得できませんでした", DisplayText.Describe(FailureClassifier.FromException(ex)), "");
             }
             return;
         }
@@ -309,6 +329,9 @@ public sealed class FilePaneViewModel : ObservableObject
     /// <summary>行を開く（フォルダなら中へ移る）。</summary>
     public Task OpenAsync(FileRowViewModel? row) =>
         row is { IsDirectory: true } ? LoadAsync(row.Entry.FullPath, focusName: null) : Task.CompletedTask;
+
+    /// <summary>画面でこちら側に触れたことを知らせる。</summary>
+    public void Activate() => ActivationRequested?.Invoke(this, EventArgs.Empty);
 
     /// <summary>画面で選んでいる数を知らせる。</summary>
     public void UpdateSelection(int selectedCount) => SelectedCount = Math.Max(0, selectedCount);
@@ -424,20 +447,20 @@ public sealed class FilePaneViewModel : ObservableObject
             // 取り直しに失敗した。今の一覧は残す。
             _failedPath = null;
             IsStale = true;
-            var message = $"{DisplayText.Describe(failure)}。前回の一覧を表示しています";
+            var state = "前回の一覧を表示しています";
             if (failure.IsTransient)
             {
                 var delay = AutoRetryDelays[Math.Min(_autoRetryCount, AutoRetryDelays.Length - 1)];
-                message += $"（{(int)delay.TotalSeconds}秒後に再試行）";
+                state += $"（{(int)delay.TotalSeconds}秒後に再試行）";
                 ScheduleAutoRetry(delay);
             }
-            ShowMessage("一覧を更新できませんでした", message);
+            ShowMessage("一覧を更新できませんでした", DisplayText.Describe(failure), state);
             return;
         }
 
         // 別のフォルダを開けなかった。今のフォルダにとどまる。
         _failedPath = requestedPath;
-        ShowMessage(_hasLoaded ? "フォルダを開けませんでした" : "一覧を取得できませんでした", DisplayText.Describe(failure));
+        ShowMessage(_hasLoaded ? "フォルダを開けませんでした" : "一覧を取得できませんでした", DisplayText.Describe(failure), "");
         OnViewStateChanged();
     }
 
@@ -471,9 +494,10 @@ public sealed class FilePaneViewModel : ObservableObject
         Breadcrumbs.SyncTo(segments);
     }
 
-    private void ShowMessage(string title, string text)
+    private void ShowMessage(string title, string reason, string text)
     {
         MessageTitle = title;
+        MessageReason = reason;
         MessageText = text;
         HasMessage = true;
     }
@@ -482,6 +506,7 @@ public sealed class FilePaneViewModel : ObservableObject
     {
         HasMessage = false;
         MessageTitle = "";
+        MessageReason = "";
         MessageText = "";
     }
 

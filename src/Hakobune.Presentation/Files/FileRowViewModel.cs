@@ -49,10 +49,17 @@ public sealed class FileRowViewModel
     public bool IsFile => !IsDirectory;
 
     /// <summary>読み上げ用の説明。</summary>
-    public string AccessibleName => IsDirectory ? $"フォルダ {Name}" : $"{Name}、{SizeText}、{ModifiedText}";
+    public string AccessibleName => Kind switch
+    {
+        FileKind.Drive => $"ドライブ {Name}",
+        FileKind.Folder => $"フォルダ {Name}",
+        _ => $"{Name}、{SizeText}、{ModifiedText}",
+    };
 
     // アイコンの出し分け（画面の x:Bind で Visibility に使う）
     public bool IsFolder => Kind == FileKind.Folder;
+
+    public bool IsDrive => Kind == FileKind.Drive;
 
     public bool IsCode => Kind == FileKind.Code;
 
@@ -98,6 +105,8 @@ internal sealed class FileRowComparer(FileSortColumn column, bool descending) : 
             return 1;
         if (x.IsDirectory != y.IsDirectory)
             return x.IsDirectory ? -1 : 1;
+        if (x.IsDrive && y.IsDrive)
+            return string.Compare(x.Entry.FullPath, y.Entry.FullPath, StringComparison.OrdinalIgnoreCase);
 
         var result = column switch
         {

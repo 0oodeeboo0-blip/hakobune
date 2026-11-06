@@ -56,7 +56,8 @@ public class FilePaneViewModelTests
         Assert.True(pane.IsStale);
         Assert.True(pane.HasMessage);
         Assert.Equal("一覧を更新できませんでした", pane.MessageTitle);
-        Assert.Equal("接続が切れました。前回の一覧を表示しています（10秒後に再試行）", pane.MessageText);
+        Assert.Equal("接続が切れました", pane.MessageReason);
+        Assert.Equal("前回の一覧を表示しています（10秒後に再試行）", pane.MessageText);
         Assert.EndsWith("時点", pane.SummaryText, StringComparison.Ordinal);
 
         source.Fault = null;
@@ -76,7 +77,8 @@ public class FilePaneViewModelTests
         await pane.RefreshAsync();
 
         Assert.Equal(4, pane.Items.Count);
-        Assert.Equal("権限がありません（550）。前回の一覧を表示しています", pane.MessageText);
+        Assert.Equal("権限がありません（550）", pane.MessageReason);
+        Assert.Equal("前回の一覧を表示しています", pane.MessageText);
     }
 
     [Fact]
@@ -91,7 +93,8 @@ public class FilePaneViewModelTests
         Assert.Equal(4, pane.Items.Count);
         Assert.False(pane.IsStale);
         Assert.Equal("フォルダを開けませんでした", pane.MessageTitle);
-        Assert.Equal("サーバーの応答がありません", pane.MessageText);
+        Assert.Equal("サーバーの応答がありません", pane.MessageReason);
+        Assert.False(pane.HasMessageText);
 
         // 「再試行」で、開けなかったフォルダをもう一度開く
         source.Fault = null;

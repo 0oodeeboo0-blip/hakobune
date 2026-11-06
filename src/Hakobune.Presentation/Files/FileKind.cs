@@ -6,6 +6,9 @@ public enum FileKind
     /// <summary>フォルダ。</summary>
     Folder,
 
+    /// <summary>ドライブ。</summary>
+    Drive,
+
     /// <summary>HTML やプログラム。</summary>
     Code,
 
@@ -37,7 +40,12 @@ public static class FileKinds
     public static FileKind Of(FileEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
-        return entry.IsDirectory ? FileKind.Folder : FromName(entry.Name);
+        return entry.Type switch
+        {
+            FileEntryType.Drive => FileKind.Drive,
+            FileEntryType.Directory => FileKind.Folder,
+            _ => FromName(entry.Name),
+        };
     }
 
     /// <summary>ファイル名から種類を返す。</summary>

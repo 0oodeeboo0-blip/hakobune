@@ -46,9 +46,40 @@ public sealed class LocalFileSourceTests : IDisposable
     }
 
     [Fact]
+    public async Task The_computer_root_lists_the_drives_above_each_drive_root()
+    {
+        var source = new LocalFileSource(showComputerRoot: true);
+        var root = Path.GetPathRoot(_root)!;
+
+        Assert.Equal(LocalFileSource.ComputerPath, source.GetParent(root));
+        Assert.Null(source.GetParent(LocalFileSource.ComputerPath));
+        var segments = source.GetSegments(_root);
+        Assert.Equal("PC", segments[0].Label);
+        Assert.Equal(root, segments[1].Path);
+        Assert.Single(source.GetSegments(LocalFileSource.ComputerPath));
+
+        var drives = await source.ListAsync(LocalFileSource.ComputerPath, TestContext.Current.CancellationToken);
+        Assert.True(drives.Succeeded);
+        Assert.NotEmpty(drives.Entries);
+        Assert.All(drives.Entries, entry => Assert.Equal(FileEntryType.Drive, entry.Type));
+        Assert.Contains(drives.Entries, entry => entry.FullPath == root);
+    }
+
+    [Fact]
+    public async Task A_pane_on_the_computer_root_shows_drives_as_folders()
+    {
+        var pane = new FilePaneViewModel(PaneKind.Local);
+        await pane.SetSourceAsync(new LocalFileSource(showComputerRoot: true), LocalFileSource.ComputerPath, TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(pane.Items);
+        Assert.All(pane.Items, row => Assert.True(row.IsDrive && row.IsDirectory && !row.IsFolder));
+        Assert.False(pane.CanGoUp);
+    }
+
+    [Fact]
     public void Parents_and_breadcrumbs_follow_the_path()
     {
-        var source = new LocalFileSource();
+        var source = new LocalFileSource(showComputerRoot: false);
         var nested = Path.Combine(_root, "a", "b");
 
         Assert.Equal(Path.Combine(_root, "a"), source.GetParent(nested));

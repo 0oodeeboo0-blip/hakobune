@@ -63,7 +63,8 @@ public class DemoDataTests
         Assert.Equal(11, main.Remote.Items.Count);
         Assert.Equal("11 項目・12:36 時点", main.Remote.SummaryText);
         Assert.Equal("一覧を更新できませんでした", main.Remote.MessageTitle);
-        Assert.Equal("接続が切れました。前回の一覧を表示しています（10秒後に再試行）", main.Remote.MessageText);
+        Assert.Equal("接続が切れました", main.Remote.MessageReason);
+        Assert.Equal("前回の一覧を表示しています（10秒後に再試行）", main.Remote.MessageText);
     }
 
     [Fact]

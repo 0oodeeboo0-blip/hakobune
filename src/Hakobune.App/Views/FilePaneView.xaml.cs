@@ -19,6 +19,9 @@ public sealed partial class FilePaneView : UserControl
     public FilePaneView()
     {
         InitializeComponent();
+        // ショートカットは、こちら側にフォーカスがあるときだけ効かせる（左右で取り合わない）
+        foreach (var accelerator in KeyboardAccelerators)
+            accelerator.ScopeOwner = this;
     }
 
     public FilePaneViewModel? ViewModel
@@ -77,9 +80,48 @@ public sealed partial class FilePaneView : UserControl
                 e.Handled = true;
                 await viewModel.GoUpCommand.ExecuteAsync(null);
                 break;
-            case VirtualKey.F5:
+        }
+    }
+
+    private void OnGotFocus(object sender, RoutedEventArgs e) => ViewModel?.Activate();
+
+    private void OnFindInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        FilterBox.Focus(FocusState.Keyboard);
+        FilterBox.SelectAll();
+    }
+
+    private async void OnGoUpInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        if (ViewModel is { } viewModel)
+            await viewModel.GoUpCommand.ExecuteAsync(null);
+    }
+
+    private async void OnRefreshInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        if (ViewModel is { } viewModel)
+            await viewModel.RefreshAsync();
+    }
+
+    // 絞り込みの欄: Esc で消して一覧へ、Enter で一覧へ
+    private void OnFilterKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case VirtualKey.Escape:
                 e.Handled = true;
-                await viewModel.RefreshAsync();
+                if (ViewModel is { } viewModel)
+                    viewModel.FilterText = "";
+                FileList.Focus(FocusState.Keyboard);
+                break;
+            case VirtualKey.Enter:
+                e.Handled = true;
+                if (FileList.Items.Count > 0 && FileList.SelectedIndex < 0)
+                    FileList.SelectedIndex = 0;
+                FileList.Focus(FocusState.Keyboard);
                 break;
         }
     }

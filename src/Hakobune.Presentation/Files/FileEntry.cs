@@ -14,6 +14,9 @@ public enum FileEntryType
 
     /// <summary>シンボリックリンク。</summary>
     Link,
+
+    /// <summary>ドライブ（パソコン側の「PC」の中）。</summary>
+    Drive,
 }
 
 /// <summary>パソコン側・サーバー側に共通の、一覧の 1 項目。</summary>
@@ -31,8 +34,8 @@ public sealed record FileEntry(
     DateTimeOffset? Modified,
     string? Permissions = null)
 {
-    /// <summary>フォルダか。</summary>
-    public bool IsDirectory => Type == FileEntryType.Directory;
+    /// <summary>フォルダか（中に入れるか）。ドライブもフォルダとして扱う。</summary>
+    public bool IsDirectory => Type is FileEntryType.Directory or FileEntryType.Drive;
 
     /// <summary>サーバーの一覧の項目から作る。</summary>
     public static FileEntry FromRemote(RemoteItem item)
