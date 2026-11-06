@@ -96,20 +96,54 @@ jobs:
           if-no-files-found: error
 
       # ランナーの画面は 1024x768 なので、1280x800 のウインドウが収まるように広げる
+      # （Windows PowerShell 5.1 は UTF-8 の日本語を読み違えるので、日本語を書くステップは pwsh で動かす）
       - name: 画面の解像度を上げる
-        shell: powershell
+        shell: pwsh
         run: |
-          try {
-            Set-DisplayResolution -Width 1920 -Height 1080 -Force -ErrorAction Stop
-          } catch {
-            Write-Host "解像度を変えられませんでした: $_"
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class Display
+          {
+              [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+              public struct DEVMODE
+              {
+                  [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+                  public short dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
+                  public int dmFields, dmPositionX, dmPositionY, dmDisplayOrientation, dmDisplayFixedOutput;
+                  public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+                  [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+                  public short dmLogPixels;
+                  public int dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency;
+                  public int dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
+              }
+
+              [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+              private static extern bool EnumDisplaySettings(string deviceName, int modeNum, ref DEVMODE devMode);
+
+              [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+              private static extern int ChangeDisplaySettings(ref DEVMODE devMode, int flags);
+
+              public static int Set(int width, int height)
+              {
+                  var mode = new DEVMODE();
+                  mode.dmSize = (short)Marshal.SizeOf(typeof(DEVMODE));
+                  if (!EnumDisplaySettings(null, -1, ref mode))
+                      return -100;
+                  mode.dmPelsWidth = width;
+                  mode.dmPelsHeight = height;
+                  mode.dmFields = 0x80000 | 0x100000;
+                  return ChangeDisplaySettings(ref mode, 0);
+              }
           }
+          '@
+          Write-Host "ChangeDisplaySettings: $([Display]::Set(1920, 1080))（0 なら成功）"
           Add-Type -AssemblyName System.Windows.Forms
           Write-Host "画面: $([System.Windows.Forms.Screen]::PrimaryScreen.Bounds)"
 
       # 起動してすぐ落ちないかを確かめ、画面写真を撮る
       - name: 起動テストと画面写真
-        shell: powershell
+        shell: pwsh
         run: |
           $exe = Join-Path $PWD 'publish\Hakobune-win-x64\Hakobune.exe'
           $p = Start-Process -FilePath $exe -PassThru
@@ -131,7 +165,7 @@ jobs:
 
       # 見本のデータで画面を出し、アプリ自身に画面写真を撮らせる（ライト・ダーク・一覧の更新に失敗した場面）
       - name: 見本の画面写真
-        shell: powershell
+        shell: pwsh
         run: |
           $exe = Join-Path $PWD 'publish\Hakobune-win-x64\Hakobune.exe'
           New-Item -ItemType Directory -Force screenshots | Out-Null
