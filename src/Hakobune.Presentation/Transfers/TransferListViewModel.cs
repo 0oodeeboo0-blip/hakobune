@@ -45,6 +45,7 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
     public TransferListViewModel(ITransferSource source, TimeProvider? timeProvider, SynchronizationContext? context)
     {
         ArgumentNullException.ThrowIfNull(source);
+        _source = EmptyTransferSource.Instance; // すぐ下の Attach で入れ替える
         _time = timeProvider ?? TimeProvider.System;
         _context = context;
 
@@ -73,7 +74,6 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
         PauseAllCommand = new RelayCommand(TogglePause, () => PendingCount > 0 || IsPaused);
         ClearFinishedCommand = new RelayCommand(() => _source.RemoveFinished(), () => CompletedCount + CancelledCount > 0);
 
-        _source = EmptyTransferSource.Instance;
         Attach(source);
     }
 
