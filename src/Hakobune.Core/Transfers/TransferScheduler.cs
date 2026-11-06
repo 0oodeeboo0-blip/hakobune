@@ -367,17 +367,23 @@ public sealed class TransferScheduler : ITransferSink
                     await DisposeQuietlyAsync(session).ConfigureAwait(false);
                     session = null;
 
-                    var (connected, failure) = await ConnectAsync(cancellationToken).ConfigureAwait(false);
+                    var (connected, failure, leftToOthers) = await ConnectAsync(cancellationToken).ConfigureAwait(false);
                     if (connected is null)
                     {
                         Release(item);
                         if (failure is null)
                             return; // 中止された
-                        if (failure.Reason == FailureReason.TooManyConnections && TryRetire())
+                        if (leftToOthers)
                         {
                             // サーバーの同時接続数の上限。この作業はやめて、残りの接続で続ける。
-                            retired = true;
-                            return;
+                            if (TryRetire())
+                            {
+                                retired = true;
+                                return;
+                            }
+                            // そのあいだに、ほかの作業が全部終わっていた。止めずに、この作業で続ける
+                            // （ほかの接続が閉じたので、次はつながるはず。だめなら、ふつうのやり直しの回数で止まる）
+                            continue;
                         }
                         Pause(failure);
                         return;
@@ -486,7 +492,9 @@ public sealed class TransferScheduler : ITransferSink
         item.CancelRequested = false;
     }
 
-    private async Task<(IRemoteSession? Session, TransferFailure? Failure)> ConnectAsync(CancellationToken cancellationToken)
+    // つなぐ。つなげなければ理由を返す（中止なら理由も null）。
+    // LeftToOthers は、サーバーの同時接続数の上限に当たり、ほかの作業がつないでいるので、やり直さずに譲ったこと。
+    private async Task<(IRemoteSession? Session, TransferFailure? Failure, bool LeftToOthers)> ConnectAsync(CancellationToken cancellationToken)
     {
         for (var attempt = 1; ; attempt++)
         {
@@ -494,12 +502,12 @@ public sealed class TransferScheduler : ITransferSink
             try
             {
                 await session.ConnectAsync(cancellationToken).ConfigureAwait(false);
-                return (session, null);
+                return (session, null, false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 await DisposeQuietlyAsync(session).ConfigureAwait(false);
-                return (null, null);
+                return (null, null, false);
             }
             catch (Exception ex)
             {
@@ -507,9 +515,9 @@ public sealed class TransferScheduler : ITransferSink
 
                 var failure = FailureClassifier.FromException(ex);
                 if (failure.Reason == FailureReason.TooManyConnections && HasOtherActiveWorkers())
-                    return (null, failure);
+                    return (null, failure, true);
                 if (!_options.ConnectPolicy.ShouldRetry(failure, attempt))
-                    return (null, failure);
+                    return (null, failure, false);
 
                 try
                 {
@@ -517,7 +525,7 @@ public sealed class TransferScheduler : ITransferSink
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
-                    return (null, null);
+                    return (null, null, false);
                 }
             }
         }
