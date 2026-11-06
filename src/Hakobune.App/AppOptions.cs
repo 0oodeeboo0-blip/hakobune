@@ -12,7 +12,8 @@ namespace Hakobune.App;
 /// <item><c>--connect URL</c>: 起動したら URL（例: sftp://user@example.com/var/www）に接続する（クイック接続。保存はしない）。</item>
 /// <item><c>--upload パス</c>: <c>--connect</c> で接続したら、そのファイルかフォルダをサーバーへ送る（CI で転送を確かめる）。</item>
 /// <item><c>--demo</c>: 見本のデータで画面を出す。<c>--scenario stale</c> で、一覧の更新に失敗した場面にする。</item>
-/// <item><c>--dialog 名前</c>: 見本のダイアログを出す（new、edit、quick、password、passphrase、hostkey、hostkey-changed、certificate、delete）。</item>
+/// <item><c>--dialog 名前</c>: 見本のダイアログを出す（new、edit、quick、password、passphrase、hostkey、hostkey-changed、certificate、delete、
+/// rename、delete-files、permissions、conflict、stop、settings）。</item>
 /// <item><c>--theme light|dark</c>: ライト・ダークを決める（省くと Windows の設定に合わせる）。</item>
 /// <item><c>--screenshot ファイル名</c>: 画面写真を PNG で保存して終わる。</item>
 /// <item><c>--size 幅x高さ</c>: ウインドウの中の大きさ（既定 1280x800）。</item>
@@ -83,6 +84,12 @@ internal sealed record AppOptions
                             "hostkey-changed" => DemoDialog.ChangedHostKey,
                             "certificate" => DemoDialog.Certificate,
                             "delete" => DemoDialog.Delete,
+                            "rename" => DemoDialog.Rename,
+                            "delete-files" => DemoDialog.DeleteFiles,
+                            "permissions" => DemoDialog.Permissions,
+                            "conflict" => DemoDialog.Conflict,
+                            "stop" => DemoDialog.StopTransfers,
+                            "settings" => DemoDialog.Settings,
                             _ => null,
                         },
                     };

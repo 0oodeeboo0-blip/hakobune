@@ -6,12 +6,14 @@ using Hakobune.Core.Transfers;
 using Hakobune.Core.Remote;
 using Hakobune.Presentation.Connections;
 using Hakobune.Presentation.Files;
+using Hakobune.Presentation.Settings;
 using Hakobune.Presentation.Transfers;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Windows.Foundation;
 
 namespace Hakobune.App.Services;
 
@@ -19,7 +21,7 @@ namespace Hakobune.App.Services;
 /// 接続のときの質問（パスワード、サーバーの鍵、証明書）と、接続先の作成・編集を、ダイアログで聞く。
 /// どのスレッドから呼んでもよい（画面のスレッドに頼んで出す）。
 /// </summary>
-internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, ITransferDialogs, IFileDialogs
+internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, ITransferDialogs, IFileDialogs, ISettingsDialogs
 {
     private readonly DispatcherQueue _dispatcher;
     private readonly Func<XamlRoot?> _xamlRoot;
@@ -54,8 +56,7 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
                 panel.Children.Add(new TextBlock
                 {
                     Text = "パスワードが違うようです。もう一度入れてください。",
-                    Foreground = Brush("SystemFillColorCriticalBrush"),
-                    TextWrapping = TextWrapping.Wrap,
+                    Style = Styled("CriticalTextStyle"),
                 });
             }
             panel.Children.Add(Paragraph($"「{profile.DisplayName}」にログインします。"));
@@ -87,8 +88,7 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
                 panel.Children.Add(new TextBlock
                 {
                     Text = "パスフレーズが違うようです。もう一度入れてください。",
-                    Foreground = Brush("SystemFillColorCriticalBrush"),
-                    TextWrapping = TextWrapping.Wrap,
+                    Style = Styled("CriticalTextStyle"),
                 });
             }
             panel.Children.Add(Paragraph($"「{profile.DisplayName}」に入るための秘密鍵に、パスフレーズが掛かっています。"));
@@ -99,8 +99,7 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
             {
                 Text = "パスフレーズは保存しません。アプリを閉じるまで覚えておきます。",
                 FontSize = 12,
-                Foreground = Brush("TextFillColorSecondaryBrush"),
-                TextWrapping = TextWrapping.Wrap,
+                Style = Styled("SecondaryTextStyle"),
             });
             passphrase.Loaded += (_, _) => passphrase.Focus(FocusState.Programmatic);
 
@@ -285,8 +284,7 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
             var problem = new TextBlock
             {
                 FontSize = 12,
-                Foreground = Brush("SystemFillColorCriticalBrush"),
-                TextWrapping = TextWrapping.Wrap,
+                Style = Styled("CriticalTextStyle"),
                 Visibility = Visibility.Collapsed,
             };
             var panel = new StackPanel { Spacing = 8 };
@@ -363,7 +361,7 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
             string[] who = ["所有者", "グループ", "その他"];
             string[] what = ["読み", "書き", "実行"];
             for (var c = 0; c < 3; c++)
-                AddCell(grid, new TextBlock { Text = what[c], Foreground = Brush("TextFillColorSecondaryBrush") }, 0, c + 1);
+                AddCell(grid, new TextBlock { Text = what[c], Style = Styled("SecondaryTextStyle") }, 0, c + 1);
             var boxes = new CheckBox[9];
             for (var r = 0; r < 3; r++)
             {
@@ -462,13 +460,45 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
                 return ContentDialogResult.None;
             dialog.XamlRoot = root;
             dialog.Style = Application.Current.Resources["DefaultContentDialogStyle"] as Style;
-            return await dialog.ShowAsync();
+            // ダイアログは画面の外側に出るので、設定で選んだライト・ダークを受け継がない。画面に合わせ、出している間に変わっても追う。
+            var content = root.Content as FrameworkElement;
+            TypedEventHandler<FrameworkElement, object> follow = (sender, _) => dialog.RequestedTheme = sender.ActualTheme;
+            if (content is not null)
+            {
+                dialog.RequestedTheme = content.ActualTheme;
+                content.ActualThemeChanged += follow;
+            }
+            try
+            {
+                return await dialog.ShowAsync();
+            }
+            finally
+            {
+                if (content is not null)
+                    content.ActualThemeChanged -= follow;
+            }
         }
         finally
         {
             _dialogGate.Release();
         }
     }
+
+    public Task ShowSettingsAsync(SettingsViewModel settings) =>
+        OnUiThreadAsync(async () =>
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "設定",
+                Content = new SettingsView(settings),
+                CloseButtonText = "閉じる",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            // カードを並べるので、ふつうのダイアログより少し広げる
+            dialog.Resources["ContentDialogMaxWidth"] = 640d;
+            await ShowAsync(dialog).ConfigureAwait(true);
+            return true;
+        });
 
     private static TextBlock Paragraph(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap };
 
@@ -478,16 +508,14 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
 
     private static Border Warning(string text) => new()
     {
-        Padding = new Thickness(12, 8, 12, 8),
-        CornerRadius = new CornerRadius(4),
-        Background = Brush("SystemFillColorCriticalBackgroundBrush"),
-        Child = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, Foreground = Brush("SystemFillColorCriticalBrush") },
+        Style = Styled("CriticalBoxStyle"),
+        Child = new TextBlock { Text = text, Style = Styled("CriticalTextStyle") },
     };
 
     private static StackPanel Field(string label, string value, bool monospace = false)
     {
         var panel = new StackPanel { Spacing = 2 };
-        panel.Children.Add(new TextBlock { Text = label, FontSize = 12, Foreground = Brush("TextFillColorSecondaryBrush") });
+        panel.Children.Add(new TextBlock { Text = label, FontSize = 12, Style = Styled("SecondaryTextStyle") });
         var text = new TextBlock { Text = value, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
         if (monospace)
             text.FontFamily = new FontFamily("Cascadia Mono, Consolas");
@@ -495,6 +523,7 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
         return panel;
     }
 
-    private static Brush? Brush(string key) =>
-        Application.Current.Resources.TryGetValue(key, out var value) ? value as Brush : null;
+    // App.xaml の部品の形。色は ThemeResource なので、ダイアログの色（ライト・ダーク）に合う
+    private static Style? Styled(string key) =>
+        Application.Current.Resources.TryGetValue(key, out var value) ? value as Style : null;
 }

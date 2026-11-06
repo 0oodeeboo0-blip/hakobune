@@ -88,6 +88,9 @@ public sealed class FilePaneViewModel : ObservableObject
     /// <summary>属性の列を出すか（サーバー側だけ）。</summary>
     public bool ShowsPermissions => Kind == PaneKind.Remote;
 
+    /// <summary>行の高さを詰めるか（設定の「コンパクト」）。</summary>
+    public bool UseCompactRows { get; set => SetProperty(ref field, value); }
+
     /// <summary>パソコン側か。</summary>
     public bool IsLocal => Kind == PaneKind.Local;
 

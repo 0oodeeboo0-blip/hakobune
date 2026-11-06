@@ -21,12 +21,16 @@
   画面写真は CI が `screenshots` ブランチに置くので、git で取る:
   `git fetch --depth 1 origin +refs/heads/screenshots:refs/remotes/origin/screenshots && git show origin/screenshots:startup.png > /tmp/startup.png`
   - `startup.png`: ふつうに起動した画面（画面全体）。`main-light.png`、`main-dark-stale.png`、`main-light-stale.png`: 見本のデータの画面。
-  - `dialog-*.png`: 見本のダイアログ（新しい接続、編集、クイック接続、パスワード、パスフレーズ、サーバーの鍵、証明書）。
+  - `startup-saved-settings.png`: 保存した設定（ダーク、コンパクト、接続先の一覧を閉じる、ウインドウの位置）で起動した画面（画面全体）。
+    CI はそのあとふつうに閉じて、設定が書き戻されたかも確かめる。
+  - `dialog-*.png`: 見本のダイアログ（新しい接続、編集、クイック接続、パスワード、パスフレーズ、サーバーの鍵、証明書、
+    名前の変更、ファイルの削除、属性、同じ名前があるとき、転送中に閉じるとき、設定）。
   - `connected.png`: Windows の上の FTP サーバー（pyftpdlib）に `--connect` で実際に接続し、`--upload` でフォルダを送り終えた画面。
   - アプリが画面写真を撮れなかったときは、同じ名前の `.error.txt` もブランチに置かれる。
 - 見本の画面は `Hakobune.exe --demo [--scenario stale] [--theme light|dark] [--screenshot ファイル名] [--size 1280x800]` で出せる。
   `--screenshot` を付けると、アプリ自身が画面写真（RenderTargetBitmap）を保存して終わる。
-  `--dialog new|edit|quick|password|passphrase|hostkey|hostkey-changed|certificate|delete` で見本のダイアログを出す（写真は画面から撮る）。
+  `--dialog new|edit|quick|password|passphrase|hostkey|hostkey-changed|certificate|delete|rename|delete-files|permissions|conflict|stop|settings`
+  で見本のダイアログを出す（写真は画面から撮る）。
   `--connect URL` で起動してすぐクイック接続する（`--screenshot` と一緒なら、接続できなかったとき `.error.txt` を書く）。
   `--upload パス` を足すと、接続したあとそのファイルかフォルダを送り、終わるまで待つ（送れなかったら `.error.txt`）。
 - アプリのビルド結果（zip）は、利用者が Actions の成果物 `Hakobune-win-x64` からダウンロードする。

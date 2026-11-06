@@ -163,6 +163,65 @@ jobs:
           $bmp.Dispose()
           Stop-Process -Id $p.Id -Force
 
+      # 保存した設定（ダーク、コンパクト、接続先の一覧を閉じる、ウインドウの位置）で起動し、画面全体を撮る。
+      # ふつうに閉じて、設定が書き戻される（開いていたフォルダも覚える）ことを確かめる。
+      - name: 設定の読み込みと保存のテスト
+        shell: pwsh
+        run: |
+          $data = Join-Path $env:APPDATA 'Hakobune'
+          $settings = Join-Path $data 'settings.json'
+          New-Item -ItemType Directory -Force $data | Out-Null
+          $saved = [ordered]@{
+            Theme = 'Dark'; UseCompactRows = $true; IsSidebarOpen = $false
+            Window = [ordered]@{ X = 160; Y = 90; Width = 1400; Height = 860; IsMaximized = $false }
+          }
+          $saved | ConvertTo-Json | Set-Content -Path $settings -Encoding utf8
+          $exe = Join-Path $PWD 'publish\Hakobune-win-x64\Hakobune.exe'
+          $p = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 15
+          if ($p.HasExited) {
+            Write-Error "アプリが起動直後に終了しました (終了コード $($p.ExitCode))"
+            exit 1
+          }
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+          New-Item -ItemType Directory -Force screenshots | Out-Null
+          $bmp.Save((Join-Path $PWD 'screenshots\startup-saved-settings.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+          $g.Dispose()
+          $bmp.Dispose()
+
+          # ×ボタンと同じように閉じる（WM_CLOSE）
+          $null = $p.CloseMainWindow()
+          if (-not $p.WaitForExit(30000)) {
+            Stop-Process -Id $p.Id -Force
+            Write-Error 'ふつうに閉じられませんでした'
+            exit 1
+          }
+          $after = Get-Content $settings -Raw
+          Write-Host $after
+          $json = $after | ConvertFrom-Json
+          $failed = $false
+          if ($json.Theme -ne 'Dark' -or -not $json.UseCompactRows -or $json.IsSidebarOpen) {
+            Write-Host '::error::選んでいた設定が保存し直されませんでした'
+            $failed = $true
+          }
+          if (-not $json.LastLocalFolder) {
+            Write-Host '::error::開いていたフォルダが保存されませんでした'
+            $failed = $true
+          }
+          if ($json.Window.X -ne 160 -or $json.Window.Y -ne 90 -or $json.Window.Width -ne 1400 -or $json.Window.Height -ne 860) {
+            Write-Host "::error::ウインドウの位置と大きさが前回のままではありません: $($json.Window | ConvertTo-Json -Compress)"
+            $failed = $true
+          }
+          # このあとのテストは、設定の無い状態から始める
+          Remove-Item $settings -Force
+          if ($failed) {
+            exit 1
+          }
+
       # 見本のデータで画面を出し、アプリ自身に画面写真を撮らせる（ライト・ダーク・一覧の更新に失敗した場面・ダイアログ）
       - name: 見本の画面写真
         shell: pwsh
@@ -180,7 +239,14 @@ jobs:
             @{ Name = 'dialog-password'; Args = '--dialog password --theme light' },
             @{ Name = 'dialog-hostkey'; Args = '--dialog hostkey --theme light' },
             @{ Name = 'dialog-hostkey-changed'; Args = '--dialog hostkey-changed --theme dark' },
-            @{ Name = 'dialog-certificate'; Args = '--dialog certificate --theme light' }
+            @{ Name = 'dialog-certificate'; Args = '--dialog certificate --theme light' },
+            @{ Name = 'dialog-rename'; Args = '--dialog rename --theme light' },
+            @{ Name = 'dialog-delete-files-dark'; Args = '--dialog delete-files --theme dark' },
+            @{ Name = 'dialog-permissions'; Args = '--dialog permissions --theme light' },
+            @{ Name = 'dialog-conflict'; Args = '--dialog conflict --theme light' },
+            @{ Name = 'dialog-stop-dark'; Args = '--dialog stop --theme dark' },
+            @{ Name = 'dialog-settings'; Args = '--dialog settings --theme light' },
+            @{ Name = 'dialog-settings-dark'; Args = '--dialog settings --theme dark' }
           )
           $failed = $false
           foreach ($shot in $shots) {

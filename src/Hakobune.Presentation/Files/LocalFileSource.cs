@@ -17,6 +17,15 @@ public sealed class LocalFileSource : IFileSource
         ReturnSpecialDirectories = false,
     };
 
+    // 隠しファイルを出すとき（Windows が守っているシステムのファイルは、ここでも出さない）
+    private static readonly EnumerationOptions OptionsWithHidden = new()
+    {
+        AttributesToSkip = FileAttributes.System,
+        IgnoreInaccessible = true,
+        RecurseSubdirectories = false,
+        ReturnSpecialDirectories = false,
+    };
+
     private readonly TimeProvider _time;
     private readonly bool _computerRoot;
 
@@ -28,6 +37,9 @@ public sealed class LocalFileSource : IFileSource
         _time = timeProvider ?? TimeProvider.System;
         _computerRoot = showComputerRoot ?? OperatingSystem.IsWindows();
     }
+
+    /// <summary>隠しファイルも出すか。変えたら一覧を取り直す。</summary>
+    public bool ShowHidden { get; set; }
 
     /// <inheritdoc />
     public Task<string> GetStartPathAsync(CancellationToken cancellationToken) =>
@@ -86,7 +98,7 @@ public sealed class LocalFileSource : IFileSource
         {
             var directory = new DirectoryInfo(path);
             var entries = new List<FileEntry>();
-            foreach (var info in directory.EnumerateFileSystemInfos("*", Options))
+            foreach (var info in directory.EnumerateFileSystemInfos("*", ShowHidden ? OptionsWithHidden : Options))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 entries.Add(ToEntry(info));

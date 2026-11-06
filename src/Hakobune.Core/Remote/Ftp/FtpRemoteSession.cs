@@ -279,7 +279,18 @@ public sealed class FtpRemoteSession : IRemoteSession
         var size = type == RemoteItemType.Directory ? 0 : entry.Size;
         var path = fullPath ?? entry.FullName ?? entry.Name;
         var name = string.IsNullOrEmpty(entry.Name) ? RemotePath.GetFileName(path) : RemotePath.GetFileName(entry.Name);
-        return new RemoteItem(name, path, type, size, modified, entry.RawPermissions);
+        return new RemoteItem(name, path, type, size, modified, PermissionsOf(entry, type));
+    }
+
+    // LIST では ls の形の文字がそのまま来る。MLSD では、FluentFTP が UNIX.mode の事実（0644 など）から読んだ数で作る
+    // （ProFTPD、Pure-FTPd など）。
+    private static string? PermissionsOf(FtpListItem entry, RemoteItemType type)
+    {
+        if (!string.IsNullOrEmpty(entry.RawPermissions))
+            return entry.RawPermissions;
+        if (entry.Chmod <= 0 || UnixMode.FromOctalDigits(entry.Chmod) is not { } mode)
+            return null;
+        return UnixMode.ToText(mode | ((int)entry.SpecialPermissions << 9), type);
     }
 
     // MLSD・MLST・MDTM の時刻は UTC。LIST の時刻はサーバーの地域の時刻だが、ここでは区別しない（接続先ごとの時差の設定で補う予定）。

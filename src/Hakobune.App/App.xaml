@@ -226,9 +226,45 @@
                 <Setter Property="Padding" Value="14,0" />
             </Style>
 
+            <!-- 設定の「行の高さ: コンパクト」 -->
+            <Style x:Key="CompactFileRowContainerStyle" BasedOn="{StaticResource FileRowContainerStyle}" TargetType="ListViewItem">
+                <Setter Property="MinHeight" Value="28" />
+            </Style>
+
             <Style x:Key="TransferRowContainerStyle" BasedOn="{StaticResource DefaultListViewItemStyle}" TargetType="ListViewItem">
                 <Setter Property="MinHeight" Value="38" />
                 <Setter Property="Padding" Value="0" />
+            </Style>
+
+            <!--
+                コードで作るダイアログの部品。色は ThemeResource で決めるので、設定でライト・ダークを変えても、その画面の色になる
+                （Application.Current.Resources から直接取ると、Windows の色の方になってしまう）。
+            -->
+            <Style x:Key="CriticalTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource SystemFillColorCriticalBrush}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+
+            <Style x:Key="SecondaryTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="TextWrapping" Value="Wrap" />
+            </Style>
+
+            <Style x:Key="CriticalBoxStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource SystemFillColorCriticalBackgroundBrush}" />
+                <Setter Property="Padding" Value="12,8,12,8" />
+                <Setter Property="CornerRadius" Value="4" />
+            </Style>
+
+            <!-- 設定の 1 行（Windows の設定アプリのカードに似せる） -->
+            <Style x:Key="SettingsCardStyle" TargetType="Grid">
+                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}" />
+                <Setter Property="Padding" Value="16,12,16,12" />
+                <Setter Property="MinHeight" Value="64" />
+                <Setter Property="ColumnSpacing" Value="16" />
             </Style>
         </ResourceDictionary>
     </Application.Resources>

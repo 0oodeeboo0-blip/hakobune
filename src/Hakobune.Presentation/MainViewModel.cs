@@ -8,6 +8,7 @@ using Hakobune.Core.Text;
 using Hakobune.Core.Transfers;
 using Hakobune.Presentation.Connections;
 using Hakobune.Presentation.Files;
+using Hakobune.Presentation.Settings;
 using Hakobune.Presentation.Transfers;
 
 namespace Hakobune.Presentation;
@@ -20,6 +21,7 @@ namespace Hakobune.Presentation;
 /// <param name="TransferDialogs">転送のときに聞く画面。null なら聞かずに上書きする（試験用）。</param>
 /// <param name="FileDialogs">新しいフォルダや削除のときに聞く画面。null ならその操作はできない。</param>
 /// <param name="LocalFiles">パソコンのファイルの操作（Windows ではごみ箱を使う）。null ならそのまま消す。</param>
+/// <param name="SettingsDialogs">設定の画面。null なら設定の画面は出さない。</param>
 public sealed record AppServices(
     string DataDirectory,
     ISecretStore Secrets,
@@ -27,7 +29,8 @@ public sealed record AppServices(
     IConnectionDialogs Dialogs,
     ITransferDialogs? TransferDialogs = null,
     IFileDialogs? FileDialogs = null,
-    ILocalFileOperations? LocalFiles = null)
+    ILocalFileOperations? LocalFiles = null,
+    ISettingsDialogs? SettingsDialogs = null)
 {
     /// <summary>接続先の一覧のファイル。</summary>
     public string ConnectionsFile => Path.Combine(DataDirectory, "connections.json");
@@ -37,6 +40,9 @@ public sealed record AppServices(
 
     /// <summary>接続先ごとの送信待ちのファイル。</summary>
     public string QueueFile(Guid connectionId) => Path.Combine(DataDirectory, "queues", $"{connectionId:N}.json");
+
+    /// <summary>アプリの設定のファイル。</summary>
+    public string SettingsFile => Path.Combine(DataDirectory, "settings.json");
 }
 
 /// <summary>メイン画面全体。</summary>
@@ -112,6 +118,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         RenameCommand = new AsyncRelayCommand(() => RenameAsync(ActivePane), () => CanRename(ActivePane));
         DeleteCommand = new AsyncRelayCommand(() => DeleteAsync(ActivePane), () => CanDelete(ActivePane));
         ChangePermissionsCommand = new AsyncRelayCommand(() => ChangePermissionsAsync(Remote), () => CanChangePermissions);
+        OpenSettingsCommand = new AsyncRelayCommand(OpenSettingsAsync, () => _services?.SettingsDialogs is not null);
         local.PropertyChanged += OnPanePropertyChanged;
         remote.PropertyChanged += OnPanePropertyChanged;
         local.ActionRequested += OnPaneActionRequested;
@@ -226,6 +233,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>サーバー側で選んだものの属性を変える（Ctrl+T）。</summary>
     public IAsyncRelayCommand ChangePermissionsCommand { get; }
 
+    /// <summary>設定の画面を出す。</summary>
+    public IAsyncRelayCommand OpenSettingsCommand { get; }
+
     /// <summary>サーバー側で選んだものの属性を変えられるか。</summary>
     public bool CanChangePermissions => _session is not null && Remote.HasLoaded && Remote.SelectedRows.Count > 0 && _services?.FileDialogs is not null;
 
@@ -247,10 +257,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>
     /// ふだんの起動のときの画面。パソコン側はホームフォルダを開き、保存した接続先を並べる。
     /// </summary>
-    public static async Task<MainViewModel> CreateAsync(AppServices services, TimeProvider? timeProvider = null)
+    public static async Task<MainViewModel> CreateAsync(AppServices services, TimeProvider? timeProvider = null, AppSettings? settings = null)
     {
         ArgumentNullException.ThrowIfNull(services);
         var time = timeProvider ?? TimeProvider.System;
+        settings ??= new AppSettings();
 
         IReadOnlyList<ConnectionProfile> profiles = [];
         TransferFailure? loadFailure = null;
@@ -291,8 +302,61 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             main._saveBlocked = true;
             remote.ShowNotice("接続先を読み込めませんでした", DisplayText.Describe(loadFailure), "アプリを開き直してください。それまでは接続先を保存しません");
         }
-        await local.SetSourceAsync(new LocalFileSource(time)).ConfigureAwait(true);
+
+        // 前回の様子に戻す（前に開いていたフォルダが無くなっていれば、ホームから）
+        main.Settings = settings;
+        main.IsSidebarOpen = settings.IsSidebarOpen;
+        transfers.IsExpanded = settings.IsTransferListExpanded;
+        local.UseCompactRows = remote.UseCompactRows = settings.UseCompactRows;
+        var localSource = new LocalFileSource(time) { ShowHidden = settings.ShowHiddenFiles };
+        var start = settings.LastLocalFolder is { Length: > 0 } last && Directory.Exists(last) ? last : null;
+        await local.SetSourceAsync(localSource, start).ConfigureAwait(true);
         return main;
+    }
+
+    /// <summary>いまの設定（開いた・閉じた、見た目など）。</summary>
+    public AppSettings Settings { get; private set => SetProperty(ref field, value); } = new();
+
+    /// <summary>設定を変える（画面の色は画面が、隠しファイルはここで反映する）。保存もする。</summary>
+    public async Task ApplySettingsAsync(AppSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        var hiddenChanged = settings.ShowHiddenFiles != Settings.ShowHiddenFiles;
+        Settings = settings;
+        Local.UseCompactRows = Remote.UseCompactRows = settings.UseCompactRows;
+        if (hiddenChanged && Local.Source is LocalFileSource source)
+        {
+            source.ShowHidden = settings.ShowHiddenFiles;
+            await Local.RefreshAsync().ConfigureAwait(true);
+        }
+        SaveSettings(window: null);
+    }
+
+    // 設定の画面を出す。変えたものはその場で反映・保存されるので、閉じたら反映が終わるのを待つだけ
+    private async Task OpenSettingsAsync()
+    {
+        if (_services?.SettingsDialogs is not { } dialogs)
+            return;
+        var settings = new SettingsViewModel(this, _services.DataDirectory);
+        await dialogs.ShowSettingsAsync(settings).ConfigureAwait(true);
+        await settings.Applying.ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// 設定と、いまの画面の様子（ウインドウの位置、開いているフォルダなど）を保存する。<paramref name="window"/> が null なら前回のまま。
+    /// </summary>
+    public void SaveSettings(WindowPlacement? window)
+    {
+        if (_services is null)
+            return;
+        Settings = Settings with
+        {
+            Window = window ?? Settings.Window,
+            LastLocalFolder = Local.HasLoaded && Local.CurrentPath.Length > 0 ? Local.CurrentPath : Settings.LastLocalFolder,
+            IsSidebarOpen = IsSidebarOpen,
+            IsTransferListExpanded = Transfers.IsExpanded,
+        };
+        AppSettings.TrySave(_services.SettingsFile, Settings);
     }
 
     /// <summary>

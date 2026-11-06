@@ -1,5 +1,9 @@
 using Hakobune.Core.Connections;
+using Hakobune.Core.Transfers;
 using Hakobune.Presentation.Connections;
+using Hakobune.Presentation.Files;
+using Hakobune.Presentation.Settings;
+using Hakobune.Presentation.Transfers;
 
 namespace Hakobune.Presentation.Demo;
 
@@ -32,6 +36,24 @@ public enum DemoDialog
 
     /// <summary>接続先の削除の確認。</summary>
     Delete,
+
+    /// <summary>名前の変更（サーバー側）。</summary>
+    Rename,
+
+    /// <summary>サーバー側のファイルの削除の確認。</summary>
+    DeleteFiles,
+
+    /// <summary>属性の変更。</summary>
+    Permissions,
+
+    /// <summary>送り先に同じ名前があるときの扱い。</summary>
+    Conflict,
+
+    /// <summary>転送中に閉じるときの確認。</summary>
+    StopTransfers,
+
+    /// <summary>設定。</summary>
+    Settings,
 }
 
 /// <summary>見本のダイアログに出す中身。</summary>
@@ -78,13 +100,46 @@ public static class DemoDialogs
         ConnectionService.DescribeProblems(System.Net.Security.SslPolicyErrors.RemoteCertificateChainErrors, null),
         PreviousFingerprint: null);
 
-    /// <summary>見本のダイアログを出す。閉じるまで待つ。</summary>
-    public static async Task ShowAsync(DemoDialog dialog, IConnectionPrompts prompts, IConnectionDialogs dialogs)
+    /// <summary>見本の設定の保存先。</summary>
+    public const string DataDirectory = @"C:\Users\user\AppData\Roaming\Hakobune";
+
+    /// <summary>
+    /// 見本のダイアログを出す。閉じるまで待つ。ファイル・転送・設定のダイアログは、その画面と <paramref name="main"/> があるときだけ出す。
+    /// </summary>
+    public static async Task ShowAsync(
+        DemoDialog dialog,
+        IConnectionPrompts prompts,
+        IConnectionDialogs dialogs,
+        IFileDialogs? fileDialogs = null,
+        ITransferDialogs? transferDialogs = null,
+        ISettingsDialogs? settingsDialogs = null,
+        MainViewModel? main = null)
     {
         ArgumentNullException.ThrowIfNull(prompts);
         ArgumentNullException.ThrowIfNull(dialogs);
         switch (dialog)
         {
+            case DemoDialog.Rename when fileDialogs is not null:
+                await fileDialogs.AskNameAsync("名前の変更", "about.html", "変更", name => FileNames.Validate(name, PaneKind.Remote)).ConfigureAwait(true);
+                break;
+            case DemoDialog.DeleteFiles when fileDialogs is not null:
+                await fileDialogs.ConfirmDeleteAsync(["index.html", "about.html", "images"], remote: true, recycleBin: false).ConfigureAwait(true);
+                break;
+            case DemoDialog.Permissions when fileDialogs is not null:
+                await fileDialogs.AskPermissionsAsync(["index.html"], Convert.ToInt32("644", 8)).ConfigureAwait(true);
+                break;
+            case DemoDialog.Conflict when transferDialogs is not null:
+                await transferDialogs.AskConflictAsync(
+                    TransferDirection.Upload,
+                    ["index.html", "about.html", "css/site.css", "images/logo.png", "images/商品_01.jpg"],
+                    count: 12).ConfigureAwait(true);
+                break;
+            case DemoDialog.StopTransfers when transferDialogs is not null:
+                await transferDialogs.ConfirmStopTransfersAsync(118, closingApp: true).ConfigureAwait(true);
+                break;
+            case DemoDialog.Settings when settingsDialogs is not null && main is not null:
+                await settingsDialogs.ShowSettingsAsync(new SettingsViewModel(main, DataDirectory)).ConfigureAwait(true);
+                break;
             case DemoDialog.NewConnection:
                 await dialogs.EditAsync(null, hasSavedPassword: false).ConfigureAwait(true);
                 break;

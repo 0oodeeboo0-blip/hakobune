@@ -29,4 +29,8 @@ public static class Ui
 
     /// <summary>転送の一覧の見出しの下線（たたんだときは出さない）。</summary>
     public static Thickness BottomLine(bool isExpanded) => new(0, 0, 0, isExpanded ? 1 : 0);
+
+    /// <summary>ファイルの一覧の行の形（設定の「コンパクト」なら低くする）。</summary>
+    public static Style FileRowStyle(bool compact) =>
+        (Style)Application.Current.Resources[compact ? "CompactFileRowContainerStyle" : "FileRowContainerStyle"];
 }

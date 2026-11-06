@@ -75,9 +75,10 @@ public class RemoteIntegrationTests
 
         // 属性を変える
         await session.SetPermissionsAsync(RemotePath.Combine(directory, "big.bin"), Convert.ToInt32("600", 8), cancellationToken);
-        var changed = Assert.Single(await session.ListAsync(directory, cancellationToken), item => item.Name == "big.bin");
-        if (UnixMode.FromText(changed.Permissions) is { } mode)
-            Assert.Equal(Convert.ToInt32("600", 8), mode & 0x1FF);
+        // どのサーバーも（MLSD で一覧を返すものも）同じ「-rw-------」の形で属性が出る
+        var changed = await session.ListAsync(directory, cancellationToken);
+        Assert.Equal("-rw-------", Assert.Single(changed, item => item.Name == "big.bin").Permissions);
+        Assert.StartsWith("d", Assert.Single(changed, item => item.IsDirectory).Permissions, StringComparison.Ordinal);
 
         // フォルダの名前を変え、中身ごと消す
         using (var inside = new MemoryStream("x"u8.ToArray()))

@@ -15,6 +15,32 @@ public static class UnixMode
         return int.Parse(Convert.ToString(mode, 8), NumberStyles.None, CultureInfo.InvariantCulture);
     }
 
+    /// <summary><see cref="ToOctalDigits"/> の逆（755 なら 0755 を表す 493）。8 進の数字でなければ null。</summary>
+    public static int? FromOctalDigits(int digits) =>
+        digits is < 0 or > 7777 ? null : Parse(digits.ToString(CultureInfo.InvariantCulture));
+
+    /// <summary>「drwxr-xr-x」のような、ls と同じ形の文字にする。</summary>
+    public static string ToText(int mode, RemoteItemType type)
+    {
+        Span<char> text = stackalloc char[10];
+        text[0] = type switch
+        {
+            RemoteItemType.Directory => 'd',
+            RemoteItemType.Link => 'l',
+            _ => '-',
+        };
+        for (var i = 0; i < 9; i++)
+            text[i + 1] = (mode & (1 << (8 - i))) != 0 ? "rwx"[i % 3] : '-';
+        // setuid・setgid・sticky は、実行の欄に s・t で出す（実行できなければ大文字）
+        if ((mode & 0x800) != 0)
+            text[3] = text[3] == 'x' ? 's' : 'S';
+        if ((mode & 0x400) != 0)
+            text[6] = text[6] == 'x' ? 's' : 'S';
+        if ((mode & 0x200) != 0)
+            text[9] = text[9] == 'x' ? 't' : 'T';
+        return new string(text);
+    }
+
     /// <summary>「644」のような 8 進の文字から読む。読めなければ null。</summary>
     public static int? Parse(string? text)
     {
@@ -35,6 +61,9 @@ public static class UnixMode
         var trimmed = text?.Trim() ?? "";
         if (Parse(trimmed) is { } octal)
             return octal;
+        // 後ろの印（SELinux の「.」、ACL の「+」、拡張属性の「@」）は飛ばす
+        if (trimmed.Length == 11 && trimmed[^1] is '.' or '+' or '@')
+            trimmed = trimmed[..^1];
         // 先頭の種類（d、-、l）は飛ばす
         if (trimmed.Length == 10)
             trimmed = trimmed[1..];

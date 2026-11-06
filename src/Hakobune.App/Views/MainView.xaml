@@ -611,6 +611,7 @@
                     Height="40"
                     Padding="10,0"
                     HorizontalContentAlignment="Left"
+                    Command="{x:Bind ViewModel.OpenSettingsCommand}"
                     Style="{StaticResource SidebarItemButtonStyle}">
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <FontIcon FontSize="16" Glyph="&#xE713;" />

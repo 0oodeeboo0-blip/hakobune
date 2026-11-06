@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:files="using:Hakobune.Presentation.Files"
+    xmlns:helpers="using:Hakobune.App.Helpers"
     GotFocus="OnGotFocus">
 
     <!--  Ctrl+F で絞り込み、Alt+↑ で上のフォルダ、F5 で取り直し  -->
@@ -473,7 +474,7 @@
             CanDragItems="True"
             DoubleTapped="OnListDoubleTapped"
             DragItemsStarting="OnDragItemsStarting"
-            ItemContainerStyle="{StaticResource FileRowContainerStyle}"
+            ItemContainerStyle="{x:Bind helpers:Ui.FileRowStyle(ViewModel.UseCompactRows), Mode=OneWay}"
             ItemTemplate="{StaticResource FileRowTemplate}"
             ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"
             KeyDown="OnListKeyDown"

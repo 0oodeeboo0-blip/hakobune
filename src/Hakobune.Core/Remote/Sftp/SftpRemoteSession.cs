@@ -335,13 +335,32 @@ public sealed class SftpRemoteSession : IRemoteSession
             ? null
             : new DateTimeOffset(DateTime.SpecifyKind(attributes.LastWriteTimeUtc, DateTimeKind.Utc));
         var size = type == RemoteItemType.Directory ? 0 : attributes.Size;
-        return new RemoteItem(name, fullPath, type, size, modified, FormatPermissions(attributes));
+        return new RemoteItem(name, fullPath, type, size, modified, UnixMode.ToText(ModeOf(attributes), type));
     }
 
-    private static string FormatPermissions(SftpFileAttributes a) => string.Concat(
-        a.OwnerCanRead ? "r" : "-", a.OwnerCanWrite ? "w" : "-", a.OwnerCanExecute ? "x" : "-",
-        a.GroupCanRead ? "r" : "-", a.GroupCanWrite ? "w" : "-", a.GroupCanExecute ? "x" : "-",
-        a.OthersCanRead ? "r" : "-", a.OthersCanWrite ? "w" : "-", a.OthersCanExecute ? "x" : "-");
+    // FTP の LIST と同じ「drwxr-xr-x」の形で出すため、いったん数にする
+    private static int ModeOf(SftpFileAttributes a)
+    {
+        bool[] bits =
+        [
+            a.OwnerCanRead, a.OwnerCanWrite, a.OwnerCanExecute,
+            a.GroupCanRead, a.GroupCanWrite, a.GroupCanExecute,
+            a.OthersCanRead, a.OthersCanWrite, a.OthersCanExecute,
+        ];
+        var mode = 0;
+        for (var i = 0; i < bits.Length; i++)
+        {
+            if (bits[i])
+                mode |= 1 << (8 - i);
+        }
+        if (a.IsUIDBitSet)
+            mode |= 0x800;
+        if (a.IsGroupIDBitSet)
+            mode |= 0x400;
+        if (a.IsStickyBitSet)
+            mode |= 0x200;
+        return mode;
+    }
 
     private async Task RunAsync(Func<SftpClient, Task> operation, CancellationToken cancellationToken)
     {

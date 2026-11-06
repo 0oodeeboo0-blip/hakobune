@@ -1,6 +1,7 @@
 using Hakobune.App.Services;
 using Hakobune.Presentation;
 using Hakobune.Presentation.Demo;
+using Hakobune.Presentation.Settings;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 
@@ -22,7 +23,7 @@ public partial class App : Application
     /// <summary>起動のときの指定。</summary>
     internal static AppOptions Options { get; private set; } = AppOptions.Default;
 
-    /// <summary>接続先や信頼した鍵を保存するフォルダ（%APPDATA%\Hakobune）。</summary>
+    /// <summary>接続先・信頼した鍵・送信待ち・設定を保存するフォルダ（%APPDATA%\Hakobune）。</summary>
     internal static string DataDirectory =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Hakobune");
 
@@ -34,11 +35,20 @@ public partial class App : Application
                 DispatcherQueue.GetForCurrentThread(),
                 () => _window?.Content?.XamlRoot,
                 () => _window is null ? 0 : WinRT.Interop.WindowNative.GetWindowHandle(_window));
-            var viewModel = Options.Demo is { } scenario
-                ? await DemoData.CreateAsync(scenario, SynchronizationContext.Current)
-                : await MainViewModel.CreateAsync(new AppServices(DataDirectory, new CredentialStore(), dialogs, dialogs, dialogs, dialogs, new RecycleBinFileOperations()));
+            MainViewModel viewModel;
+            if (Options.Demo is { } scenario)
+            {
+                viewModel = await DemoData.CreateAsync(scenario, SynchronizationContext.Current);
+            }
+            else
+            {
+                var services = new AppServices(
+                    DataDirectory, new CredentialStore(), dialogs, dialogs, dialogs, dialogs, new RecycleBinFileOperations(), dialogs);
+                var settings = await AppSettings.LoadAsync(services.SettingsFile);
+                viewModel = await MainViewModel.CreateAsync(services, null, settings);
+            }
             _window = new MainWindow(viewModel, Options);
-            _window.Activate();
+            _window.Show();
 
             // 接続のときのダイアログを出せるよう、画面ができてから始める
             await _window.WhenLoaded;
@@ -69,7 +79,7 @@ public partial class App : Application
         if (Options.Dialog is { } dialog)
         {
             // ダイアログは閉じるまで終わらないので待たない。出るまで少し待つ。
-            _ = DemoDialogs.ShowAsync(dialog, dialogs, dialogs);
+            _ = DemoDialogs.ShowAsync(dialog, dialogs, dialogs, dialogs, dialogs, dialogs, viewModel);
             return Task.Delay(TimeSpan.FromSeconds(1));
         }
         if (Options.ConnectUrl is { } url)
