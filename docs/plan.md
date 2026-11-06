@@ -86,6 +86,13 @@ FFFTP で慣れた左右 2 画面の使い方はそのままに、次の 3 つ�
 
 それぞれの段階の終わりに動くものを確認してもらってから、次へ進む。
 
+### 進み具合
+
+- **段階 0（完了）**: リポジトリ、CI（Linux でエンジンのテスト、Windows でアプリのビルド・起動テスト・画面写真）、メイン画面のデザイン案。
+- **段階 1（完了）**: 送信待ちとやり直し（`TransferScheduler`）、FTP / FTPS（`FtpRemoteSession`）、SFTP（`SftpRemoteSession`）、送信待ちの保存（`TransferQueueFile`）、画面用の接続（`RemoteBrowser`）。
+  偽のサーバーでのテストに加え、vsftpd・Pure-FTPd・ProFTPD・OpenSSH を相手に、接続をわざと切りながら 400 ファイルが全部届くことを CI で確かめている。
+- **段階 2（次）**: 基本の画面。進め方は [ui-plan.md](ui-plan.md)。
+
 ## 参考: FFFTP の調査で分かったこと
 
 FFFTP 5.8（master c0347d1）のコードで確認した。
