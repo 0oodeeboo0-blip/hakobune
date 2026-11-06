@@ -1,9 +1,11 @@
+using System.Collections.Concurrent;
 using Hakobune.Core.Connections;
 using Hakobune.Core.Remote;
 using Hakobune.Core.Remote.Ftp;
 using Hakobune.Core.Remote.Sftp;
 using Hakobune.Core.Transfers;
 using Hakobune.Presentation.Connections;
+using Hakobune.Presentation.Transfers;
 
 namespace Hakobune.Presentation.Tests.Connections;
 
@@ -17,6 +19,12 @@ internal sealed class FakeLoginServer
     public string Home { get; set; } = "/home/web";
 
     public Dictionary<string, List<RemoteItem>> Folders { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>ファイルの中身（アップロードで書かれ、ダウンロードで読まれる）。</summary>
+    public ConcurrentDictionary<string, byte[]> Files { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>アップロードの最初に待たせたいとき。</summary>
+    public Func<CancellationToken, Task>? BeforeUpload { get; set; }
 
     public TransferFailure? ConnectFault { get; set; }
 
@@ -76,15 +84,36 @@ internal sealed class FakeLoginServer
                 ? Task.FromResult<IReadOnlyList<RemoteItem>>(items)
                 : throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.NotFound));
 
-        public Task<RemoteItem?> GetItemAsync(string path, CancellationToken cancellationToken) => Task.FromResult<RemoteItem?>(null);
+        public Task<RemoteItem?> GetItemAsync(string path, CancellationToken cancellationToken)
+        {
+            var name = RemotePath.GetFileName(path);
+            if (server.Files.TryGetValue(path, out var data))
+                return Task.FromResult<RemoteItem?>(new RemoteItem(name, path, RemoteItemType.File, data.Length, DateTimeOffset.UtcNow));
+            return Task.FromResult<RemoteItem?>(server.Folders.ContainsKey(path)
+                ? new RemoteItem(name, path, RemoteItemType.Directory, 0, DateTimeOffset.UtcNow)
+                : null);
+        }
 
         public Task CreateDirectoryAsync(string path, CancellationToken cancellationToken) => Task.CompletedTask;
 
-        public Task UploadAsync(Stream source, string remotePath, long offset, IProgress<long>? progress, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+        public async Task UploadAsync(Stream source, string remotePath, long offset, IProgress<long>? progress, CancellationToken cancellationToken)
+        {
+            if (server.BeforeUpload is { } before)
+                await before(cancellationToken);
+            using var buffer = new MemoryStream();
+            await source.CopyToAsync(buffer, cancellationToken);
+            server.Files[remotePath] = buffer.ToArray();
+            progress?.Report(buffer.Length);
+        }
 
-        public Task DownloadAsync(string remotePath, Stream destination, long offset, IProgress<long>? progress, CancellationToken cancellationToken) =>
-            Task.CompletedTask;
+        public async Task DownloadAsync(string remotePath, Stream destination, long offset, IProgress<long>? progress, CancellationToken cancellationToken)
+        {
+            var data = server.Files.TryGetValue(remotePath, out var bytes)
+                ? bytes
+                : throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.NotFound));
+            await destination.WriteAsync(data.AsMemory((int)offset), cancellationToken);
+            progress?.Report(data.Length - offset);
+        }
 
         public Task DeleteFileAsync(string path, CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -185,5 +214,29 @@ internal sealed class ScriptedDialogs : IConnectionDialogs
     {
         DeleteQuestions++;
         return Task.FromResult(ConfirmDelete);
+    }
+}
+
+/// <summary>答えを決めておける、転送のときの質問。</summary>
+internal sealed class ScriptedTransferDialogs : ITransferDialogs
+{
+    public ConflictPolicy? ConflictAnswer { get; set; } = ConflictPolicy.Overwrite;
+
+    public bool StopAnswer { get; set; } = true;
+
+    public List<(TransferDirection Direction, IReadOnlyList<string> Names, int Count)> ConflictQuestions { get; } = [];
+
+    public List<(int Pending, bool ClosingApp)> StopQuestions { get; } = [];
+
+    public Task<ConflictPolicy?> AskConflictAsync(TransferDirection direction, IReadOnlyList<string> names, int count)
+    {
+        ConflictQuestions.Add((direction, names, count));
+        return Task.FromResult(ConflictAnswer);
+    }
+
+    public Task<bool> ConfirmStopTransfersAsync(int pendingCount, bool closingApp)
+    {
+        StopQuestions.Add((pendingCount, closingApp));
+        return Task.FromResult(StopAnswer);
     }
 }

@@ -67,7 +67,7 @@ public sealed class TransferRowViewModel : ObservableObject
     public double BytesPerSecond { get; private set; }
 
     /// <summary>まだ送っていない量（バイト）。</summary>
-    public long RemainingBytes => State is TransferState.Completed or TransferState.Failed or TransferState.Skipped
+    public long RemainingBytes => State is TransferState.Completed or TransferState.Failed or TransferState.Skipped or TransferState.Cancelled
         ? 0
         : Math.Max(0, Snapshot.TotalBytes - Snapshot.TransferredBytes);
 
@@ -96,6 +96,9 @@ public sealed class TransferRowViewModel : ObservableObject
     public bool CanRetry { get; private set => SetProperty(ref field, value); }
 
     public bool CanShowDetails { get; private set => SetProperty(ref field, value); }
+
+    /// <summary>失敗の詳しい説明（「詳細」で出す。サーバーの返事、パスなど）。</summary>
+    public string FailureDetails { get; private set => SetProperty(ref field, value); } = "";
 
     /// <summary>読み上げ用の説明。</summary>
     public string AccessibleName => $"{DirectionLabel} {Name}、{StateLabel}、{Detail}";
@@ -136,14 +139,16 @@ public sealed class TransferRowViewModel : ObservableObject
         ShowsStatus = !IsRunning;
         IsRetrying = state == TransferState.WaitingToRetry;
         IsFailed = state == TransferState.Failed;
-        IsDone = state is TransferState.Completed or TransferState.Skipped;
+        IsDone = state is TransferState.Completed or TransferState.Skipped or TransferState.Cancelled;
         IsQueued = state == TransferState.Queued;
         ShowsPlainLabel = IsDone || IsQueued;
-        CanPause = IsRunning;
+        // 1 件だけ止めたいときは「取り消し」にして、あとで「再送」する（続きから送る）
+        CanPause = false;
         CanCancel = IsRunning || IsRetrying || IsQueued;
         CanRetryNow = IsRetrying;
-        CanRetry = IsFailed;
+        CanRetry = IsFailed || state == TransferState.Cancelled;
         CanShowDetails = IsFailed;
+        FailureDetails = IsFailed ? DescribeFailure(snapshot) : "";
 
         var percent = snapshot.TotalBytes > 0
             ? Math.Clamp(snapshot.TransferredBytes * 100d / snapshot.TotalBytes, 0, 100)
@@ -160,9 +165,29 @@ public sealed class TransferRowViewModel : ObservableObject
             TransferState.Completed => CompletedDetail(snapshot, timeZone),
             TransferState.Failed => FailedDetail(snapshot),
             TransferState.Skipped => snapshot.Note ?? "",
+            TransferState.Cancelled => snapshot.FinishedAt is { } at
+                ? TimeZoneInfo.ConvertTime(at, timeZone).ToString("HH:mm", CultureInfo.InvariantCulture)
+                : "",
             _ => "",
         };
         OnPropertyChanged(nameof(AccessibleName));
+    }
+
+    // 「詳細」の中身: 理由、サーバーの返事、回数、パス
+    private string DescribeFailure(TransferItemSnapshot snapshot)
+    {
+        var lines = new List<string>();
+        if (snapshot.LastFailure is { } failure)
+        {
+            lines.Add(DisplayText.Describe(failure));
+            if (!string.IsNullOrWhiteSpace(failure.ServerMessage))
+                lines.Add("サーバーの返事: " + failure.ServerMessage.Trim());
+        }
+        if (snapshot.FailedAttempts > 1)
+            lines.Add($"{snapshot.FailedAttempts.ToString(CultureInfo.InvariantCulture)}回試しました");
+        lines.Add((IsUpload ? "送るファイル: " : "受け取る先: ") + snapshot.LocalPath);
+        lines.Add((IsUpload ? "送り先: " : "サーバーのファイル: ") + snapshot.RemotePath);
+        return string.Join(Environment.NewLine, lines);
     }
 
     private string RunningDetail(TransferItemSnapshot snapshot)

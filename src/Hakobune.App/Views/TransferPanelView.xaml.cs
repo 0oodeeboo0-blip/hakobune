@@ -32,4 +32,24 @@ public sealed partial class TransferPanelView : UserControl
         if ((sender as FrameworkElement)?.DataContext is TransferTabViewModel tab)
             ViewModel?.SelectTab(tab.Tab);
     }
+
+    private static TransferRowViewModel? RowOf(object sender) => (sender as FrameworkElement)?.DataContext as TransferRowViewModel;
+
+    private void OnCancelClick(object sender, RoutedEventArgs e)
+    {
+        if (RowOf(sender) is { } row)
+            ViewModel?.Cancel(row);
+    }
+
+    private void OnRetryClick(object sender, RoutedEventArgs e)
+    {
+        if (RowOf(sender) is { } row)
+            ViewModel?.Retry(row);
+    }
+
+    private void OnRetryNowClick(object sender, RoutedEventArgs e)
+    {
+        if (RowOf(sender) is { } row)
+            ViewModel?.RetryNow(row);
+    }
 }

@@ -19,7 +19,7 @@ internal sealed class TransferItem(long sequence, TransferRequest request)
 
     public DateTimeOffset? RetryAt { get; set; }
 
-    public long TotalBytes { get; set; }
+    public long TotalBytes { get; set; } = Math.Max(0, request.ExpectedBytes ?? 0);
 
     public long TransferredBytes { get; set; }
 
@@ -36,6 +36,9 @@ internal sealed class TransferItem(long sequence, TransferRequest request)
     /// 「同じ名前のファイル」と取り違えないために使う。
     /// </summary>
     public bool HasWrittenTarget { get; set; }
+
+    /// <summary>転送中に取り消すよう頼まれた（止まったら「取り消し」にする）。</summary>
+    public bool CancelRequested { get; set; }
 
     /// <summary>最後に進み具合を知らせた時刻（<see cref="TimeProvider.GetTimestamp"/> の値）。</summary>
     public long LastProgressTimestamp { get; set; }

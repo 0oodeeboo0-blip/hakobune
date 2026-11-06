@@ -287,6 +287,7 @@ public sealed class FilePaneViewModel : ObservableObject
         CancelAutoRetry();
         _source = source;
         _rows = [];
+        SelectedRows = [];
         _hasLoaded = false;
         _failedPath = null;
         _autoRetryCount = 0;
@@ -369,6 +370,31 @@ public sealed class FilePaneViewModel : ObservableObject
 
     /// <summary>画面で選んでいる数を知らせる。</summary>
     public void UpdateSelection(int selectedCount) => SelectedCount = Math.Max(0, selectedCount);
+
+    /// <summary>画面で選んでいる行を知らせる（アップロード・ダウンロードの対象になる）。</summary>
+    public void UpdateSelection(IReadOnlyList<FileRowViewModel> rows)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        SelectedRows = rows;
+        SelectedCount = rows.Count;
+    }
+
+    /// <summary>選んでいる行。</summary>
+    public IReadOnlyList<FileRowViewModel> SelectedRows { get; private set => SetProperty(ref field, value); } = [];
+
+    /// <summary>一覧を出している相手。</summary>
+    public IFileSource? Source => _source;
+
+    /// <summary>いまのフォルダの一覧を取れているか（送り先にできるか）。</summary>
+    public bool HasLoaded => _hasLoaded;
+
+    /// <summary>いまのフォルダに、その名前の項目があるか（絞り込みに関係なく。パソコン側は大文字と小文字を区別しない）。</summary>
+    public bool HasItemNamed(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        var comparison = Kind == PaneKind.Local ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        return _rows.Any(row => string.Equals(row.Name, name, comparison));
+    }
 
     /// <summary>名前で行を選んで見える位置に出す（画面が <see cref="FocusItem"/> を読んで選ぶ）。</summary>
     public bool Focus(string name)
@@ -469,6 +495,7 @@ public sealed class FilePaneViewModel : ObservableObject
             CurrentPath = listing.Path;
             UpdateBreadcrumbs();
             _rows = listing.Entries.Select(entry => new FileRowViewModel(entry, _time.LocalTimeZone, ShowsPermissions)).ToList();
+            SelectedRows = []; // 行を作り直したので、前に選んでいた行はもう一覧にない
             RetrievedAt = listing.RetrievedAt;
             IsStale = false;
             HideMessage();

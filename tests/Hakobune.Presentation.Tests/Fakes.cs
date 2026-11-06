@@ -76,18 +76,85 @@ internal sealed class FakeTransferSource : ITransferSource
 
     public event EventHandler<TransferItemSnapshot>? ItemChanged;
 
+    public event EventHandler<IReadOnlyList<Guid>>? ItemsRemoved;
+
+    public event EventHandler? StateChanged;
+
     public int MaxAttempts => 5;
 
     public int MaxConcurrency => 3;
 
     public int RetryFailedCalls { get; private set; }
 
+    public bool IsPaused { get; private set; }
+
+    public TransferFailure? StopReason { get; private set; }
+
+    public int RestoredPendingCount { get; set; }
+
+    public List<Guid> Cancelled { get; } = [];
+
+    public List<Guid> Retried { get; } = [];
+
+    public List<Guid> RetriedNow { get; } = [];
+
     public IReadOnlyList<TransferItemSnapshot> GetItems() => [.. _items];
+
+    public void Pause()
+    {
+        IsPaused = true;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void Resume()
+    {
+        IsPaused = false;
+        StopReason = null;
+        RestoredPendingCount = 0;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>接続できなくて止まったことにする。</summary>
+    public void Stop(TransferFailure reason)
+    {
+        IsPaused = true;
+        StopReason = reason;
+        StateChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     public int RetryFailed()
     {
         RetryFailedCalls++;
         return 0;
+    }
+
+    public int Retry(IEnumerable<Guid> ids)
+    {
+        Retried.AddRange(ids);
+        return 0;
+    }
+
+    public int RetryNow(IEnumerable<Guid> ids)
+    {
+        RetriedNow.AddRange(ids);
+        return 0;
+    }
+
+    public int Cancel(IEnumerable<Guid> ids)
+    {
+        Cancelled.AddRange(ids);
+        return 0;
+    }
+
+    public int RemoveFinished()
+    {
+        var removed = _items.Where(item => item.State is TransferState.Completed or TransferState.Skipped or TransferState.Cancelled)
+            .Select(item => item.Id)
+            .ToList();
+        _items.RemoveAll(item => removed.Contains(item.Id));
+        if (removed.Count > 0)
+            ItemsRemoved?.Invoke(this, removed);
+        return removed.Count;
     }
 
     public TransferItemSnapshot Add(

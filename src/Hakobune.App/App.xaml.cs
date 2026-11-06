@@ -36,7 +36,7 @@ public partial class App : Application
                 () => _window is null ? 0 : WinRT.Interop.WindowNative.GetWindowHandle(_window));
             var viewModel = Options.Demo is { } scenario
                 ? await DemoData.CreateAsync(scenario, SynchronizationContext.Current)
-                : await MainViewModel.CreateAsync(new AppServices(DataDirectory, new CredentialStore(), dialogs, dialogs));
+                : await MainViewModel.CreateAsync(new AppServices(DataDirectory, new CredentialStore(), dialogs, dialogs, dialogs));
             _window = new MainWindow(viewModel, Options);
             _window.Activate();
 
@@ -46,10 +46,14 @@ public partial class App : Application
             if (Options.ScreenshotPath is not { } path)
                 return;
 
-            // 画面写真: 接続などが終わってから撮る（長くても 90 秒で撮る）
-            await Task.WhenAny(ready, Task.Delay(TimeSpan.FromSeconds(90)));
+            // 画面写真: 接続や転送が終わってから撮る（長くても 4 分で撮る）
+            await Task.WhenAny(ready, Task.Delay(TimeSpan.FromMinutes(4)));
             if (Options.ConnectUrl is not null && !viewModel.IsConnected)
                 CrashReport.WriteMessage($"接続できませんでした: {viewModel.Remote.MessageTitle} {viewModel.Remote.MessageReason}");
+            else if (Options.UploadPath is not null && (viewModel.Transfers.TotalCount == 0 || viewModel.PendingTransferCount > 0 || viewModel.Transfers.FailedCount > 0))
+                CrashReport.WriteMessage(
+                    $"アップロードが終わりませんでした: 全部 {viewModel.Transfers.TotalCount} 件、残り {viewModel.PendingTransferCount} 件、" +
+                    $"失敗 {viewModel.Transfers.FailedCount} 件 {string.Join(" / ", viewModel.Transfers.Rows.Where(row => row.IsFailed).Select(row => row.FailureDetails))}");
             await _window.CaptureAndExitAsync(path, fromScreen: Options.Dialog is not null);
         }
         catch (Exception ex)
@@ -69,8 +73,22 @@ public partial class App : Application
             return Task.Delay(TimeSpan.FromSeconds(1));
         }
         if (Options.ConnectUrl is { } url)
-            return viewModel.QuickConnectAsync(url);
+            return ConnectAndUploadAsync(viewModel, url, Options.UploadPath);
         return Task.CompletedTask;
+    }
+
+    // 接続して、指定があれば送り、送り終わるまで待つ
+    private static async Task ConnectAndUploadAsync(MainViewModel viewModel, string url, string? upload)
+    {
+        await viewModel.QuickConnectAsync(url);
+        if (upload is null || !viewModel.IsConnected)
+            return;
+        await viewModel.UploadAsync([upload]);
+        var deadline = DateTime.UtcNow + TimeSpan.FromMinutes(3);
+        while (viewModel.PendingTransferCount > 0 && DateTime.UtcNow < deadline)
+            await Task.Delay(250);
+        // 一覧の取り直しと、転送の一覧の表示が終わるのを待つ
+        await Task.Delay(TimeSpan.FromSeconds(3));
     }
 
     private void OnUnhandledException(object sender, Microsoft.UI.Xaml.UnhandledExceptionEventArgs e)

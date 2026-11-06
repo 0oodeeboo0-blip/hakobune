@@ -23,6 +23,9 @@ public sealed class TransferScheduler : ITransferSink
 
     private readonly object _gate = new();
     private readonly List<TransferItem> _items = [];
+
+    // 転送中の項目を 1 件だけ止めるためのもの（項目の ID ごと）
+    private readonly Dictionary<Guid, CancellationTokenSource> _itemCancellations = [];
     private readonly ConcurrentDictionary<string, byte> _createdDirectories = new(StringComparer.Ordinal);
     private readonly IRemoteSessionFactory _sessionFactory;
     private readonly TransferOptions _options;
@@ -46,6 +49,9 @@ public sealed class TransferScheduler : ITransferSink
 
     /// <summary>項目の状態や進み具合が変わったときに呼ばれる（どのスレッドからも呼ばれうる）。</summary>
     public event EventHandler<TransferItemSnapshot>? ItemChanged;
+
+    /// <summary>項目を一覧から消したときに呼ばれる（どのスレッドからも呼ばれうる）。</summary>
+    public event EventHandler<IReadOnlyList<Guid>>? ItemsRemoved;
 
     /// <summary>転送の設定。</summary>
     public TransferOptions Options => _options;
@@ -166,12 +172,7 @@ public sealed class TransferScheduler : ITransferSink
             {
                 if (item.State != TransferState.Failed)
                     continue;
-                item.State = TransferState.Queued;
-                item.FailedAttempts = 0;
-                item.LastFailure = null;
-                item.RetryAt = null;
-                item.Note = null;
-                item.FinishedAt = null;
+                ResetLocked(item);
                 changed.Add(item.ToSnapshot());
             }
             SignalLocked();
@@ -179,6 +180,132 @@ public sealed class TransferScheduler : ITransferSink
         foreach (var snapshot in changed)
             Raise(snapshot);
         return changed.Count;
+    }
+
+    /// <summary>
+    /// 項目を取り消す。待機中ならすぐに、転送中なら止まったところで「取り消し」にする。終わった項目はそのまま。
+    /// 取り消す項目の数を返す。
+    /// </summary>
+    public int Cancel(IEnumerable<Guid> ids)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        var wanted = ids.ToHashSet();
+        var changed = new List<TransferItemSnapshot>();
+        var toStop = new List<CancellationTokenSource>();
+        var count = 0;
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            foreach (var item in _items)
+            {
+                if (!wanted.Contains(item.Id))
+                    continue;
+                switch (item.State)
+                {
+                    case TransferState.Queued or TransferState.WaitingToRetry:
+                        item.State = TransferState.Cancelled;
+                        item.RetryAt = null;
+                        item.FinishedAt = now;
+                        changed.Add(item.ToSnapshot());
+                        count++;
+                        break;
+                    case TransferState.Running:
+                        item.CancelRequested = true;
+                        if (_itemCancellations.TryGetValue(item.Id, out var cancellation))
+                            toStop.Add(cancellation);
+                        count++;
+                        break;
+                }
+            }
+            SignalLocked();
+        }
+
+        // 止める合図はロックの外で出す（合図を受けた処理がその場で動くことがある）
+        foreach (var cancellation in toStop)
+        {
+            try
+            {
+                cancellation.Cancel();
+            }
+            catch (ObjectDisposedException)
+            {
+                // ちょうど終わったところ
+            }
+        }
+        foreach (var snapshot in changed)
+            Raise(snapshot);
+        return count;
+    }
+
+    /// <summary>失敗・取り消しの項目を待機中に戻す（1 件ずつの「再送」）。戻した件数を返す。</summary>
+    public int Retry(IEnumerable<Guid> ids)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        var wanted = ids.ToHashSet();
+        var changed = new List<TransferItemSnapshot>();
+        lock (_gate)
+        {
+            foreach (var item in _items)
+            {
+                if (!wanted.Contains(item.Id) || item.State is not (TransferState.Failed or TransferState.Cancelled))
+                    continue;
+                ResetLocked(item);
+                changed.Add(item.ToSnapshot());
+            }
+            SignalLocked();
+        }
+        foreach (var snapshot in changed)
+            Raise(snapshot);
+        return changed.Count;
+    }
+
+    /// <summary>やり直しを待っている項目を、待たずにすぐやり直す（「今すぐ再試行」）。対象の件数を返す。</summary>
+    public int RetryNow(IEnumerable<Guid> ids)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        var wanted = ids.ToHashSet();
+        var changed = new List<TransferItemSnapshot>();
+        lock (_gate)
+        {
+            foreach (var item in _items)
+            {
+                if (!wanted.Contains(item.Id) || item.State != TransferState.WaitingToRetry)
+                    continue;
+                item.RetryAt = null;
+                changed.Add(item.ToSnapshot());
+            }
+            SignalLocked();
+        }
+        foreach (var snapshot in changed)
+            Raise(snapshot);
+        return changed.Count;
+    }
+
+    /// <summary>転送中でない項目を一覧から消す。消した件数を返す。</summary>
+    public int Remove(IEnumerable<Guid> ids)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        var wanted = ids.ToHashSet();
+        return RemoveWhere(item => wanted.Contains(item.Id) && item.State != TransferState.Running);
+    }
+
+    /// <summary>終わった項目（完了・スキップ・取り消し）を一覧から消す。消した件数を返す。</summary>
+    public int RemoveFinished() =>
+        RemoveWhere(item => item.State is TransferState.Completed or TransferState.Skipped or TransferState.Cancelled);
+
+    private int RemoveWhere(Predicate<TransferItem> match)
+    {
+        List<Guid> removed;
+        lock (_gate)
+        {
+            removed = [.. _items.Where(item => match(item)).Select(item => item.Id)];
+            if (removed.Count == 0)
+                return 0;
+            _items.RemoveAll(match);
+            SignalLocked();
+        }
+        ItemsRemoved?.Invoke(this, removed);
+        return removed.Count;
     }
 
     /// <summary>
@@ -286,15 +413,28 @@ public sealed class TransferScheduler : ITransferSink
     // 1 件を実行する。戻り値は、この接続をこのあとも使ってよいか。
     private async Task<bool> ExecuteAsync(TransferItem item, IRemoteSession session, CancellationToken cancellationToken)
     {
+        using var itemCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        lock (_gate)
+        {
+            _itemCancellations[item.Id] = itemCancellation;
+            if (item.CancelRequested)
+                itemCancellation.Cancel(); // 接続を待つあいだに取り消された
+        }
         try
         {
-            var result = await _executor.ExecuteAsync(item, session, this, cancellationToken).ConfigureAwait(false);
+            var result = await _executor.ExecuteAsync(item, session, this, itemCancellation.Token).ConfigureAwait(false);
             Finish(item, result);
             return true;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             Release(item);
+            return false;
+        }
+        catch (Exception) when (IsCancelRequested(item))
+        {
+            // 取り消された。途中で止めた接続は、このあと使わない
+            MarkCancelled(item);
             return false;
         }
         catch (Exception ex)
@@ -305,6 +445,44 @@ public sealed class TransferScheduler : ITransferSink
             // 一時的な失敗や想定外のエラーのあとは、その接続を信用しない（FFFTP の「壊れた接続の使い回し」を防ぐ）。
             return !failure.IsTransient && failure.Reason != FailureReason.Unknown;
         }
+        finally
+        {
+            lock (_gate)
+                _itemCancellations.Remove(item.Id);
+        }
+    }
+
+    private bool IsCancelRequested(TransferItem item)
+    {
+        lock (_gate)
+            return item.CancelRequested;
+    }
+
+    private void MarkCancelled(TransferItem item)
+    {
+        TransferItemSnapshot snapshot;
+        lock (_gate)
+        {
+            item.State = TransferState.Cancelled;
+            item.CancelRequested = false;
+            item.RetryAt = null;
+            item.FinishedAt = _time.GetUtcNow();
+            snapshot = item.ToSnapshot();
+            SignalLocked();
+        }
+        Raise(snapshot);
+    }
+
+    // やり直しの前の状態に戻す（ロックの中で呼ぶ）
+    private static void ResetLocked(TransferItem item)
+    {
+        item.State = TransferState.Queued;
+        item.FailedAttempts = 0;
+        item.LastFailure = null;
+        item.RetryAt = null;
+        item.Note = null;
+        item.FinishedAt = null;
+        item.CancelRequested = false;
     }
 
     private async Task<(IRemoteSession? Session, TransferFailure? Failure)> ConnectAsync(CancellationToken cancellationToken)
@@ -439,6 +617,7 @@ public sealed class TransferScheduler : ITransferSink
             item.State = result.State;
             item.Note = result.Note;
             item.SizeVerified = result.SizeVerified;
+            item.CancelRequested = false; // 取り消しが間に合わなかった（もう終わっていた）
             item.RetryAt = null;
             item.FinishedAt = _time.GetUtcNow();
             if (result.State == TransferState.Completed)
@@ -481,7 +660,16 @@ public sealed class TransferScheduler : ITransferSink
         {
             if (item.State == TransferState.Running)
             {
-                item.State = item.FailedAttempts > 0 ? TransferState.WaitingToRetry : TransferState.Queued;
+                if (item.CancelRequested)
+                {
+                    item.State = TransferState.Cancelled;
+                    item.CancelRequested = false;
+                    item.FinishedAt = _time.GetUtcNow();
+                }
+                else
+                {
+                    item.State = item.FailedAttempts > 0 ? TransferState.WaitingToRetry : TransferState.Queued;
+                }
                 item.RetryAt = null;
             }
             snapshot = item.ToSnapshot();
@@ -519,7 +707,7 @@ public sealed class TransferScheduler : ITransferSink
 
     private TransferSummary SummarizeLocked()
     {
-        int queued = 0, running = 0, waiting = 0, completed = 0, failed = 0, skipped = 0;
+        int queued = 0, running = 0, waiting = 0, completed = 0, failed = 0, skipped = 0, cancelled = 0;
         foreach (var item in _items)
         {
             switch (item.State)
@@ -542,9 +730,12 @@ public sealed class TransferScheduler : ITransferSink
                 case TransferState.Skipped:
                     skipped++;
                     break;
+                case TransferState.Cancelled:
+                    cancelled++;
+                    break;
             }
         }
-        return new TransferSummary(_items.Count, queued, running, waiting, completed, failed, skipped);
+        return new TransferSummary(_items.Count, queued, running, waiting, completed, failed, skipped, cancelled);
     }
 
     // 待っている作業をすべて起こす。

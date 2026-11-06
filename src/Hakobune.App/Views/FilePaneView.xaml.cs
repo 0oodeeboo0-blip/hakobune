@@ -57,7 +57,7 @@ public sealed partial class FilePaneView : UserControl
     }
 
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e) =>
-        ViewModel?.UpdateSelection(FileList.SelectedItems.Count);
+        ViewModel?.UpdateSelection(FileList.SelectedItems.OfType<FileRowViewModel>().ToList());
 
     private async void OnListDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {

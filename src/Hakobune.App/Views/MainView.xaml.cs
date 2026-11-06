@@ -39,6 +39,20 @@ public sealed partial class MainView : UserControl
         await ViewModel.QuickConnectCommand.ExecuteAsync(null);
     }
 
+    private async void OnUploadInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        if (ViewModel.UploadCommand.CanExecute(null))
+            await ViewModel.UploadCommand.ExecuteAsync(null);
+    }
+
+    private async void OnDownloadInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        if (ViewModel.DownloadCommand.CanExecute(null))
+            await ViewModel.DownloadCommand.ExecuteAsync(null);
+    }
+
     // 接続先をクリックすると接続する（接続中のものなら何もしない）
     private async void OnConnectionClick(object sender, RoutedEventArgs e)
     {

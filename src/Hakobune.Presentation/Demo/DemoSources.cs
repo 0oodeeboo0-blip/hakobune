@@ -101,11 +101,46 @@ internal sealed class DemoTransferSource(IReadOnlyList<TransferItemSnapshot> ite
         remove { }
     }
 
+    public event EventHandler<IReadOnlyList<Guid>>? ItemsRemoved
+    {
+        add { }
+        remove { }
+    }
+
+    public event EventHandler? StateChanged
+    {
+        add { }
+        remove { }
+    }
+
     public int MaxAttempts => maxAttempts;
 
     public int MaxConcurrency => maxConcurrency;
 
+    public bool IsPaused => false;
+
+    public TransferFailure? StopReason => null;
+
+    public int RestoredPendingCount => 0;
+
     public IReadOnlyList<TransferItemSnapshot> GetItems() => items;
 
+    // 見本の画面では、押しても何も変えない
+    public void Pause()
+    {
+    }
+
+    public void Resume()
+    {
+    }
+
     public int RetryFailed() => 0;
+
+    public int Retry(IEnumerable<Guid> ids) => 0;
+
+    public int RetryNow(IEnumerable<Guid> ids) => 0;
+
+    public int Cancel(IEnumerable<Guid> ids) => 0;
+
+    public int RemoveFinished() => 0;
 }

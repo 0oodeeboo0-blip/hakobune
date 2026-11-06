@@ -171,4 +171,90 @@ public class TransferListViewModelTests
         Assert.Equal(@"→ C:\Users\user\Sites\logs", rows["access.log"].Destination);
         Assert.True(rows["access.log"].IsDownload);
     }
+
+    [Fact]
+    public void Switching_to_another_server_shows_its_queue_only()
+    {
+        var (list, first, _) = Create();
+        first.Add("old.html", TransferState.Queued);
+        var second = new FakeTransferSource();
+        second.Add("new.html", TransferState.Queued);
+
+        list.SetSource(second);
+        first.Add("late.html", TransferState.Queued); // 前の送信待ちから遅れて届いたもの
+
+        Assert.Equal(new[] { "new.html" }, Names(list));
+        Assert.Equal(1, list.TotalCount);
+    }
+
+    [Fact]
+    public void Clearing_finished_items_removes_their_rows()
+    {
+        var (list, source, _) = Create();
+        source.Add("done.html", TransferState.Completed, transferred: 1000);
+        source.Add("cancelled.html", TransferState.Cancelled);
+        source.Add("queued.html", TransferState.Queued);
+        Assert.True(list.ClearFinishedCommand.CanExecute(null));
+
+        list.ClearFinishedCommand.Execute(null);
+
+        Assert.Equal(new[] { "queued.html" }, Names(list));
+        Assert.False(list.ClearFinishedCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void Pausing_and_a_stop_for_a_reason_are_shown()
+    {
+        var (list, source, _) = Create();
+        source.Add("queued.html", TransferState.Queued);
+        Assert.Equal("すべて一時停止", list.PauseButtonText);
+
+        list.PauseAllCommand.Execute(null);
+
+        Assert.True(source.IsPaused);
+        Assert.Equal("一時停止中", list.PauseText);
+        Assert.Equal("再開", list.PauseButtonText);
+
+        source.Stop(TransferFailure.Permanent(FailureReason.AuthenticationFailed));
+        Assert.True(list.IsStoppedByFailure);
+        Assert.StartsWith("接続できないため止まっています", list.PauseText, StringComparison.Ordinal);
+
+        list.PauseAllCommand.Execute(null);
+        Assert.False(source.IsPaused);
+        Assert.Equal("", list.PauseText);
+    }
+
+    [Fact]
+    public void Row_buttons_act_on_that_row()
+    {
+        var (list, source, _) = Create();
+        var queued = source.Add("queued.html", TransferState.Queued);
+        var retrying = source.Add("retry.html", TransferState.WaitingToRetry, failedAttempts: 1);
+        var cancelled = source.Add("cancelled.html", TransferState.Cancelled);
+        var rows = list.Rows.ToDictionary(row => row.Name);
+
+        list.Cancel(rows["queued.html"]);
+        list.RetryNow(rows["retry.html"]);
+        list.Retry(rows["cancelled.html"]);
+
+        Assert.Equal(new[] { queued.Id }, source.Cancelled.ToArray());
+        Assert.Equal(new[] { retrying.Id }, source.RetriedNow.ToArray());
+        Assert.Equal(new[] { cancelled.Id }, source.Retried.ToArray());
+        Assert.Equal("取り消し", rows["cancelled.html"].StateLabel);
+        Assert.True(rows["cancelled.html"].CanRetry);
+        Assert.False(rows["queued.html"].CanPause);
+    }
+
+    [Fact]
+    public void Failure_details_include_the_server_reply_and_paths()
+    {
+        var (list, source, _) = Create();
+        source.Add("denied.php", TransferState.Failed, failedAttempts: 1, failure: FtpReplyClassifier.Classify(550, "Permission denied."));
+
+        var row = Assert.Single(list.Rows);
+
+        Assert.Contains("権限がありません（550）", row.FailureDetails, StringComparison.Ordinal);
+        Assert.Contains("Permission denied.", row.FailureDetails, StringComparison.Ordinal);
+        Assert.Contains("/var/www/html/denied.php", row.FailureDetails, StringComparison.Ordinal);
+    }
 }

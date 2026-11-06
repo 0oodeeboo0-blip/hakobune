@@ -63,6 +63,7 @@ public static class DisplayText
         TransferState.Completed => "完了",
         TransferState.Failed => "失敗",
         TransferState.Skipped => "スキップ",
+        TransferState.Cancelled => "取り消し",
         _ => "",
     };
 

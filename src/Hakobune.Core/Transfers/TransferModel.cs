@@ -30,6 +30,9 @@ public enum TransferState
 
     /// <summary>同じ名前のファイルの扱いなどにより、送らなかった。</summary>
     Skipped,
+
+    /// <summary>利用者が取り消した。</summary>
+    Cancelled,
 }
 
 /// <summary>転送先に同じ名前のファイルがあるときの扱い。</summary>
@@ -52,11 +55,13 @@ public enum ConflictPolicy
 /// <param name="LocalPath">パソコン側のパス。</param>
 /// <param name="RemotePath">サーバー側のパス。</param>
 /// <param name="OnConflict">転送先に同じ名前のファイルがあるときの扱い。</param>
+/// <param name="ExpectedBytes">わかっていればファイルの大きさ（始まる前から残り時間を出すため）。</param>
 public sealed record TransferRequest(
     TransferDirection Direction,
     string LocalPath,
     string RemotePath,
-    ConflictPolicy OnConflict = ConflictPolicy.Overwrite);
+    ConflictPolicy OnConflict = ConflictPolicy.Overwrite,
+    long? ExpectedBytes = null);
 
 /// <summary>
 /// 送信待ちの 1 件の、ある時点の様子。画面に出すために使う。
@@ -87,7 +92,8 @@ public sealed record TransferSummary(
     int WaitingToRetry,
     int Completed,
     int Failed,
-    int Skipped)
+    int Skipped,
+    int Cancelled = 0)
 {
     /// <summary>まだ終わっていない件数。</summary>
     public int Pending => Queued + Running + WaitingToRetry;

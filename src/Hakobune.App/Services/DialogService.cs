@@ -2,7 +2,9 @@ using System.ComponentModel;
 using System.Globalization;
 using Hakobune.App.Views;
 using Hakobune.Core.Connections;
+using Hakobune.Core.Transfers;
 using Hakobune.Presentation.Connections;
+using Hakobune.Presentation.Transfers;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -14,7 +16,7 @@ namespace Hakobune.App.Services;
 /// 接続のときの質問（パスワード、サーバーの鍵、証明書）と、接続先の作成・編集を、ダイアログで聞く。
 /// どのスレッドから呼んでもよい（画面のスレッドに頼んで出す）。
 /// </summary>
-internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs
+internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, ITransferDialogs
 {
     private readonly DispatcherQueue _dispatcher;
     private readonly Func<XamlRoot?> _xamlRoot;
@@ -22,6 +24,9 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs
 
     // ダイアログは一度に 1 つしか出せない
     private readonly SemaphoreSlim _dialogGate = new(1, 1);
+
+    // 同じ名前のものがあったときに、前に選んだ扱い（次に聞くときの最初の選択にする）
+    private ConflictPolicy _lastConflictPolicy = ConflictPolicy.OverwriteIfNewer;
 
     /// <summary>
     /// <paramref name="xamlRoot"/> はダイアログを出す画面、<paramref name="windowHandle"/> はファイルを選ぶ画面の持ち主のウインドウ。
@@ -210,6 +215,61 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs
                 Content = Paragraph("保存してあるパスワードも消えます。サーバーのファイルは消えません。"),
                 PrimaryButtonText = "削除",
                 CloseButtonText = "やめる",
+                DefaultButton = ContentDialogButton.Close,
+            };
+            return await ShowAsync(dialog).ConfigureAwait(true) == ContentDialogResult.Primary;
+        });
+
+    public Task<ConflictPolicy?> AskConflictAsync(TransferDirection direction, IReadOnlyList<string> names, int count) =>
+        OnUiThreadAsync<ConflictPolicy?>(async () =>
+        {
+            var where = direction == TransferDirection.Upload ? "サーバー" : "パソコン";
+            var shown = string.Join("、", names.Select(name => $"「{name}」"));
+            var panel = new StackPanel { Spacing = 12, MaxWidth = 460 };
+            panel.Children.Add(Paragraph(count > names.Count
+                ? $"{where}に、同じ名前のものが {count.ToString("N0", CultureInfo.CurrentCulture)} 件あります（{shown} ほか）。"
+                : $"{where}に、同じ名前のものがあります（{shown}）。"));
+            panel.Children.Add(Paragraph("フォルダの中のファイルも、同じように扱います。"));
+
+            var choices = new RadioButtons();
+            choices.Items.Add(new RadioButton { Content = "新しいときだけ上書きする（おすすめ）", Tag = ConflictPolicy.OverwriteIfNewer });
+            choices.Items.Add(new RadioButton { Content = "すべて上書きする", Tag = ConflictPolicy.Overwrite });
+            choices.Items.Add(new RadioButton { Content = "同じ名前のものは送らない", Tag = ConflictPolicy.Skip });
+            choices.SelectedIndex = _lastConflictPolicy switch
+            {
+                ConflictPolicy.Overwrite => 1,
+                ConflictPolicy.Skip => 2,
+                _ => 0,
+            };
+            panel.Children.Add(choices);
+
+            var dialog = new ContentDialog
+            {
+                Title = "同じ名前のものがあります",
+                Content = panel,
+                PrimaryButtonText = direction == TransferDirection.Upload ? "アップロード" : "ダウンロード",
+                CloseButtonText = "やめる",
+                DefaultButton = ContentDialogButton.Primary,
+            };
+            if (await ShowAsync(dialog).ConfigureAwait(true) != ContentDialogResult.Primary)
+                return null;
+            var policy = (choices.SelectedItem as RadioButton)?.Tag is ConflictPolicy selected ? selected : ConflictPolicy.OverwriteIfNewer;
+            _lastConflictPolicy = policy;
+            return policy;
+        });
+
+    public Task<bool> ConfirmStopTransfersAsync(int pendingCount, bool closingApp) =>
+        OnUiThreadAsync(async () =>
+        {
+            var count = pendingCount.ToString("N0", CultureInfo.CurrentCulture);
+            var dialog = new ContentDialog
+            {
+                Title = "転送が終わっていません",
+                Content = Paragraph(
+                    $"まだ {count} 件の転送が残っています。{(closingApp ? "閉じる" : "切断する")}と、転送を止めます。" +
+                    "残りは保存しておき、次にこの接続先につないだときに続きから送れます。"),
+                PrimaryButtonText = closingApp ? "止めて閉じる" : "止めて切断",
+                CloseButtonText = "転送を続ける",
                 DefaultButton = ContentDialogButton.Close,
             };
             return await ShowAsync(dialog).ConfigureAwait(true) == ContentDialogResult.Primary;

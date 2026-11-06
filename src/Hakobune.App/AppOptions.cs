@@ -10,6 +10,7 @@ namespace Hakobune.App;
 /// <remarks>
 /// <list type="bullet">
 /// <item><c>--connect URL</c>: 起動したら URL（例: sftp://user@example.com/var/www）に接続する（クイック接続。保存はしない）。</item>
+/// <item><c>--upload パス</c>: <c>--connect</c> で接続したら、そのファイルかフォルダをサーバーへ送る（CI で転送を確かめる）。</item>
 /// <item><c>--demo</c>: 見本のデータで画面を出す。<c>--scenario stale</c> で、一覧の更新に失敗した場面にする。</item>
 /// <item><c>--dialog 名前</c>: 見本のダイアログを出す（new、edit、quick、password、passphrase、hostkey、hostkey-changed、certificate、delete）。</item>
 /// <item><c>--theme light|dark</c>: ライト・ダークを決める（省くと Windows の設定に合わせる）。</item>
@@ -30,6 +31,9 @@ internal sealed record AppOptions
 
     /// <summary>起動したら接続する URL。</summary>
     public string? ConnectUrl { get; init; }
+
+    /// <summary>接続したら送るファイルかフォルダ。</summary>
+    public string? UploadPath { get; init; }
 
     /// <summary>ライト・ダーク。null なら Windows の設定に合わせる。</summary>
     public ApplicationTheme? Theme { get; init; }
@@ -58,6 +62,10 @@ internal sealed record AppOptions
                     break;
                 case "--connect":
                     options = options with { ConnectUrl = string.IsNullOrWhiteSpace(value) ? null : value };
+                    i++;
+                    break;
+                case "--upload":
+                    options = options with { UploadPath = string.IsNullOrWhiteSpace(value) ? null : value };
                     i++;
                     break;
                 case "--dialog":

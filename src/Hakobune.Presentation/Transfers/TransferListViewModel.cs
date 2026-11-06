@@ -17,11 +17,19 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
     private static readonly TimeSpan FlushInterval = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan TickInterval = TimeSpan.FromSeconds(1);
 
-    private readonly ITransferSource _source;
     private readonly TimeProvider _time;
     private readonly SynchronizationContext? _context;
     private readonly Dictionary<Guid, TransferRowViewModel> _rows = [];
-    private readonly ConcurrentQueue<TransferItemSnapshot> _pending = new();
+
+    // 届いた変化（どの送信待ちのものかを、切り替えの回数で見分ける）
+    private readonly ConcurrentQueue<(int Generation, TransferItemSnapshot Snapshot)> _pending = new();
+    private readonly ConcurrentQueue<(int Generation, IReadOnlyList<Guid> Ids)> _removals = new();
+    private readonly HashSet<Guid> _removedIds = [];
+    private ITransferSource _source;
+    private int _generation;
+    private EventHandler<TransferItemSnapshot>? _onItemChanged;
+    private EventHandler<IReadOnlyList<Guid>>? _onItemsRemoved;
+    private EventHandler? _onStateChanged;
     private readonly Dictionary<Guid, int> _queuePositions = [];
     private readonly Lock _flushLock = new();
     private readonly ITimer? _flushTimer;
@@ -37,7 +45,6 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
     public TransferListViewModel(ITransferSource source, TimeProvider? timeProvider, SynchronizationContext? context)
     {
         ArgumentNullException.ThrowIfNull(source);
-        _source = source;
         _time = timeProvider ?? TimeProvider.System;
         _context = context;
 
@@ -63,17 +70,12 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
                 SelectTab(tab.Tab);
         });
         ToggleExpandedCommand = new RelayCommand(() => IsExpanded = !IsExpanded);
-        PauseAllCommand = new RelayCommand(() => PauseRequested?.Invoke(this, EventArgs.Empty), () => PendingCount > 0);
+        PauseAllCommand = new RelayCommand(TogglePause, () => PendingCount > 0 || IsPaused);
+        ClearFinishedCommand = new RelayCommand(() => _source.RemoveFinished(), () => CompletedCount + CancelledCount > 0);
 
-        var timestamp = _time.GetTimestamp();
-        foreach (var snapshot in source.GetItems())
-            _rows[snapshot.Id] = CreateRow(snapshot, timestamp);
-        source.ItemChanged += OnItemChanged;
-        Rebuild();
+        _source = EmptyTransferSource.Instance;
+        Attach(source);
     }
-
-    /// <summary>「すべて一時停止」が押された。</summary>
-    public event EventHandler? PauseRequested;
 
     /// <summary>タブ。</summary>
     public IReadOnlyList<TransferTabViewModel> Tabs { get; }
@@ -106,7 +108,52 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
     public int TotalCount { get; private set => SetProperty(ref field, value); }
 
     /// <summary>完了の数（スキップを含む）。</summary>
-    public int CompletedCount { get; private set => SetProperty(ref field, value); }
+    public int CompletedCount
+    {
+        get;
+        private set
+        {
+            if (SetProperty(ref field, value))
+                ClearFinishedCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    /// <summary>取り消した数。</summary>
+    public int CancelledCount
+    {
+        get;
+        private set
+        {
+            if (SetProperty(ref field, value))
+                ClearFinishedCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    /// <summary>一時停止しているか（利用者が止めた、または接続できなくて止まった）。</summary>
+    public bool IsPaused
+    {
+        get;
+        private set
+        {
+            if (!SetProperty(ref field, value))
+                return;
+            PauseAllCommand.NotifyCanExecuteChanged();
+            OnPropertyChanged(nameof(PauseButtonText));
+            OnPropertyChanged(nameof(PauseButtonGlyph));
+        }
+    }
+
+    /// <summary>止まっている理由（例: 一時停止中、接続できないため止まっています）。止まっていなければ空。</summary>
+    public string PauseText { get; private set => SetProperty(ref field, value); } = "";
+
+    /// <summary>接続できなくて止まったか（注意の色で出す）。</summary>
+    public bool IsStoppedByFailure { get; private set => SetProperty(ref field, value); }
+
+    /// <summary>一時停止のボタンの説明。</summary>
+    public string PauseButtonText => IsPaused ? "再開" : "すべて一時停止";
+
+    /// <summary>一時停止のボタンのアイコン（再生か一時停止）。</summary>
+    public string PauseButtonGlyph => IsPaused ? "\uE768" : "\uE769";
 
     /// <summary>失敗の数。</summary>
     public int FailedCount
@@ -186,7 +233,50 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
 
     public IRelayCommand ToggleExpandedCommand { get; }
 
+    /// <summary>すべて一時停止する。止まっているときは再開する。</summary>
     public IRelayCommand PauseAllCommand { get; }
+
+    /// <summary>終わった項目（完了・スキップ・取り消し）を一覧から消す。</summary>
+    public IRelayCommand ClearFinishedCommand { get; }
+
+    /// <summary>送信待ちを切り替える（接続先が変わったとき）。一覧は作り直す。</summary>
+    public void SetSource(ITransferSource source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (ReferenceEquals(source, _source))
+            return;
+        lock (_flushLock)
+        {
+            Detach();
+            _rows.Clear();
+            _removedIds.Clear();
+            _pending.Clear();
+            _removals.Clear();
+            Attach(source);
+        }
+    }
+
+    /// <summary>1 件を取り消す。</summary>
+    public void Cancel(TransferRowViewModel row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        _source.Cancel([row.Id]);
+    }
+
+    /// <summary>失敗・取り消しの 1 件を送り直す。</summary>
+    public void Retry(TransferRowViewModel row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        _source.Retry([row.Id]);
+    }
+
+    /// <summary>やり直しを待っている 1 件を、すぐやり直す。</summary>
+    public void RetryNow(TransferRowViewModel row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        _source.RetryNow([row.Id]);
+    }
 
     /// <summary>1 秒ごとの更新（速さ、残り時間、再開までの秒数）を始める。</summary>
     public void Start()
@@ -231,8 +321,22 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
             var membershipChanged = false;
             var timestamp = _time.GetTimestamp();
             var changed = new List<TransferRowViewModel>();
-            while (_pending.TryDequeue(out var snapshot))
+            while (_removals.TryDequeue(out var removal))
             {
+                if (removal.Generation != _generation)
+                    continue;
+                foreach (var id in removal.Ids)
+                {
+                    _removedIds.Add(id);
+                    membershipChanged |= _rows.Remove(id);
+                }
+            }
+            while (_pending.TryDequeue(out var entry))
+            {
+                var snapshot = entry.Snapshot;
+                // 前の送信待ちのものと、消したあとに遅れて届いたものは捨てる
+                if (entry.Generation != _generation || _removedIds.Contains(snapshot.Id))
+                    continue;
                 if (_rows.TryGetValue(snapshot.Id, out var row))
                 {
                     membershipChanged |= row.Apply(snapshot, timestamp);
@@ -277,10 +381,68 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
         if (_disposed)
             return;
         _disposed = true;
-        _source.ItemChanged -= OnItemChanged;
+        Detach();
         _flushTimer?.Dispose();
         _tickTimer?.Dispose();
         _tickTimer = null;
+    }
+
+    // 送信待ちを見はじめる（_flushLock の中か、作るときに呼ぶ）
+    private void Attach(ITransferSource source)
+    {
+        _source = source;
+        var generation = ++_generation;
+        _onItemChanged = (_, snapshot) => OnItemChanged(generation, snapshot);
+        _onItemsRemoved = (_, ids) => OnItemsRemoved(generation, ids);
+        _onStateChanged = (_, _) => Post(() =>
+        {
+            if (generation == _generation && !_disposed)
+                UpdatePauseState();
+        });
+        source.ItemChanged += _onItemChanged;
+        source.ItemsRemoved += _onItemsRemoved;
+        source.StateChanged += _onStateChanged;
+
+        var timestamp = _time.GetTimestamp();
+        foreach (var snapshot in source.GetItems())
+            _rows[snapshot.Id] = CreateRow(snapshot, timestamp);
+        UpdatePauseState();
+        Rebuild();
+    }
+
+    private void Detach()
+    {
+        if (_onItemChanged is not null)
+            _source.ItemChanged -= _onItemChanged;
+        if (_onItemsRemoved is not null)
+            _source.ItemsRemoved -= _onItemsRemoved;
+        if (_onStateChanged is not null)
+            _source.StateChanged -= _onStateChanged;
+        _onItemChanged = null;
+        _onItemsRemoved = null;
+        _onStateChanged = null;
+    }
+
+    private void UpdatePauseState()
+    {
+        IsPaused = _source.IsPaused;
+        var reason = _source.StopReason;
+        IsStoppedByFailure = IsPaused && reason is not null;
+        var restored = _source.RestoredPendingCount;
+        PauseText = !IsPaused ? ""
+            : reason is not null ? $"接続できないため止まっています（{DisplayText.Describe(reason)}）"
+            : restored > 0 ? $"前回の残りが {restored:N0} 件あります。再開すると続きから送ります"
+            : "一時停止中";
+        PauseAllCommand.NotifyCanExecuteChanged();
+    }
+
+    private void TogglePause()
+    {
+        if (_source.IsPaused)
+            _source.Resume();
+        else
+            _source.Pause();
+        UpdatePauseState();
     }
 
     private TransferRowViewModel CreateRow(TransferItemSnapshot snapshot, long timestamp)
@@ -290,9 +452,20 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
         return row;
     }
 
-    private void OnItemChanged(object? sender, TransferItemSnapshot snapshot)
+    private void OnItemChanged(int generation, TransferItemSnapshot snapshot)
     {
-        _pending.Enqueue(snapshot);
+        _pending.Enqueue((generation, snapshot));
+        ScheduleFlush();
+    }
+
+    private void OnItemsRemoved(int generation, IReadOnlyList<Guid> ids)
+    {
+        _removals.Enqueue((generation, ids));
+        ScheduleFlush();
+    }
+
+    private void ScheduleFlush()
+    {
         if (Interlocked.Exchange(ref _flushScheduled, 1) != 0)
             return;
 
@@ -376,10 +549,12 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
         Tabs[4].Count = failed.Count;
 
         TotalCount = _rows.Count;
-        CompletedCount = done.Count;
+        CancelledCount = done.Count(row => row.State == TransferState.Cancelled);
+        CompletedCount = done.Count - CancelledCount;
         FailedCount = failed.Count;
         PendingCount = active.Count + queued.Count;
         FinishedCount = done.Count + failed.Count;
+        PauseAllCommand.NotifyCanExecuteChanged();
         HasItems = _rows.Count > 0;
 
         // 待機中の何番目か

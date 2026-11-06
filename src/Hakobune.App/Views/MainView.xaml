@@ -14,6 +14,15 @@
             Key="Q"
             Invoked="OnQuickConnectInvoked"
             Modifiers="Control" />
+        <!--  FFFTP と同じ: Ctrl+U でアップロード、Ctrl+D でダウンロード  -->
+        <KeyboardAccelerator
+            Key="U"
+            Invoked="OnUploadInvoked"
+            Modifiers="Control" />
+        <KeyboardAccelerator
+            Key="D"
+            Invoked="OnDownloadInvoked"
+            Modifiers="Control" />
     </UserControl.KeyboardAccelerators>
 
     <Grid x:Name="Root" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
@@ -146,7 +155,10 @@
                     <FontIcon FontSize="16" Glyph="{x:Bind helpers:Ui.SidebarGlyph(ViewModel.IsSidebarOpen), Mode=OneWay}" />
                 </Button>
                 <Rectangle Style="{StaticResource ToolbarSeparatorStyle}" />
-                <Button Style="{StaticResource ToolbarButtonStyle}" ToolTipService.ToolTip="選んだファイルをサーバーへ送る">
+                <Button
+                    Command="{x:Bind ViewModel.UploadCommand}"
+                    Style="{StaticResource ToolbarButtonStyle}"
+                    ToolTipService.ToolTip="選んだファイルをサーバーへ送る (Ctrl+U)">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon
                             FontSize="16"
@@ -155,7 +167,10 @@
                         <TextBlock Text="アップロード" />
                     </StackPanel>
                 </Button>
-                <Button Style="{StaticResource ToolbarButtonStyle}" ToolTipService.ToolTip="選んだファイルをパソコンへ受け取る">
+                <Button
+                    Command="{x:Bind ViewModel.DownloadCommand}"
+                    Style="{StaticResource ToolbarButtonStyle}"
+                    ToolTipService.ToolTip="選んだファイルをパソコンへ受け取る (Ctrl+D)">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon
                             FontSize="16"

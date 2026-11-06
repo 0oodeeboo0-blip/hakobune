@@ -471,4 +471,118 @@ public class TransferSchedulerTests
         Assert.Equal(TransferState.Completed, item.State);
         Assert.False(item.SizeVerified);
     }
+
+    [Fact]
+    public async Task Cancelled_waiting_items_are_not_sent()
+    {
+        using var temp = new TempDirectory();
+        var requests = UploadRequests(temp, 5, _ => [1]);
+        var server = new FakeServer();
+        var scheduler = new TransferScheduler(server, FastOptions(maxConcurrency: 1));
+        var items = scheduler.Enqueue(requests);
+
+        Assert.Equal(2, scheduler.Cancel([items[1].Id, items[3].Id]));
+        var result = await scheduler.RunAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(TransferRunOutcome.Finished, result.Outcome);
+        Assert.Equal(3, result.Summary.Completed);
+        Assert.Equal(2, result.Summary.Cancelled);
+        Assert.DoesNotContain(requests[1].RemotePath, server.CompletedUploads);
+        Assert.Equal(TransferState.Cancelled, scheduler.GetItems().Single(item => item.Id == items[3].Id).State);
+    }
+
+    [Fact]
+    public async Task Cancelling_a_running_item_stops_only_that_item()
+    {
+        using var temp = new TempDirectory();
+        var requests = UploadRequests(temp, 3, _ => [1, 2, 3]);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = new FakeServer
+        {
+            // 最初のファイルだけ、取り消されるまで終わらない
+            BeforeUpload = async cancellationToken =>
+            {
+                if (started.TrySetResult())
+                    await Task.Delay(Timeout.Infinite, cancellationToken);
+            },
+        };
+        var scheduler = new TransferScheduler(server, FastOptions(maxConcurrency: 1));
+        var items = scheduler.Enqueue(requests);
+
+        var run = scheduler.RunAsync(TestContext.Current.CancellationToken);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        Assert.Equal(1, scheduler.Cancel([items[0].Id]));
+        var result = await run.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+
+        Assert.Equal(TransferRunOutcome.Finished, result.Outcome);
+        Assert.Equal(1, result.Summary.Cancelled);
+        Assert.Equal(2, result.Summary.Completed);
+        var cancelled = scheduler.GetItems().Single(item => item.Id == items[0].Id);
+        Assert.Equal(TransferState.Cancelled, cancelled.State);
+        Assert.NotNull(cancelled.FinishedAt);
+        Assert.Equal(0, cancelled.FailedAttempts);
+    }
+
+    [Fact]
+    public async Task Cancelled_items_can_be_sent_again_and_finished_items_cleared()
+    {
+        using var temp = new TempDirectory();
+        var requests = UploadRequests(temp, 4, _ => [1]);
+        var server = new FakeServer();
+        var scheduler = new TransferScheduler(server, FastOptions());
+        var items = scheduler.Enqueue(requests);
+        scheduler.Cancel([items[2].Id]);
+        await scheduler.RunAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, scheduler.Retry([items[2].Id, items[0].Id])); // 完了したものは戻さない
+        var again = await scheduler.RunAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(4, again.Summary.Completed);
+
+        var removed = new List<Guid>();
+        scheduler.ItemsRemoved += (_, ids) => removed.AddRange(ids);
+        Assert.Equal(4, scheduler.RemoveFinished());
+        Assert.Empty(scheduler.GetItems());
+        Assert.Equal(items.Select(item => item.Id).Order(), removed.Order());
+    }
+
+    [Fact]
+    public void Known_sizes_are_shown_before_the_transfer_starts()
+    {
+        var scheduler = new TransferScheduler(new FakeServer(), FastOptions());
+
+        var item = Assert.Single(scheduler.Enqueue([new TransferRequest(TransferDirection.Download, "C:\\a.zip", "/a.zip", ExpectedBytes: 2048)]));
+
+        Assert.Equal(2048, item.TotalBytes);
+        Assert.Equal(0, item.TransferredBytes);
+    }
+
+    [Fact]
+    public async Task Retry_now_skips_the_wait()
+    {
+        using var temp = new TempDirectory();
+        var requests = UploadRequests(temp, 1, _ => [1]);
+        var failedOnce = 0;
+        var server = new FakeServer
+        {
+            UploadFault = (_, _, _) => Interlocked.Increment(ref failedOnce) == 1
+                ? new WriteFault(0, TransferFailure.Transient(FailureReason.ConnectionLost))
+                : null,
+        };
+        var options = FastOptions(maxConcurrency: 1) with { RetryPolicy = new RetryPolicy(5, [TimeSpan.FromHours(1)], jitterRatio: 0) };
+        var scheduler = new TransferScheduler(server, options);
+        var item = Assert.Single(scheduler.Enqueue(requests));
+        var waiting = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        scheduler.ItemChanged += (_, snapshot) =>
+        {
+            if (snapshot.State == TransferState.WaitingToRetry && snapshot.RetryAt is not null)
+                waiting.TrySetResult();
+        };
+
+        var run = scheduler.RunAsync(TestContext.Current.CancellationToken);
+        await waiting.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        Assert.Equal(1, scheduler.RetryNow([item.Id]));
+        var result = await run.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, result.Summary.Completed);
+    }
 }

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Hakobune.Core.Connections;
@@ -14,13 +15,22 @@ namespace Hakobune.Presentation;
 /// <param name="Secrets">パスワードの保管場所。</param>
 /// <param name="Prompts">接続のときに利用者に聞く画面。</param>
 /// <param name="Dialogs">接続先の作成・編集の画面。</param>
-public sealed record AppServices(string DataDirectory, ISecretStore Secrets, IConnectionPrompts Prompts, IConnectionDialogs Dialogs)
+/// <param name="TransferDialogs">転送のときに聞く画面。null なら聞かずに上書きする（試験用）。</param>
+public sealed record AppServices(
+    string DataDirectory,
+    ISecretStore Secrets,
+    IConnectionPrompts Prompts,
+    IConnectionDialogs Dialogs,
+    ITransferDialogs? TransferDialogs = null)
 {
     /// <summary>接続先の一覧のファイル。</summary>
     public string ConnectionsFile => Path.Combine(DataDirectory, "connections.json");
 
     /// <summary>信頼したサーバーの鍵のファイル。</summary>
     public string TrustedKeysFile => Path.Combine(DataDirectory, "trusted-keys.json");
+
+    /// <summary>接続先ごとの送信待ちのファイル。</summary>
+    public string QueueFile(Guid connectionId) => Path.Combine(DataDirectory, "queues", $"{connectionId:N}.json");
 }
 
 /// <summary>メイン画面全体。</summary>
@@ -40,6 +50,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     // 接続先のファイルを読めなかったときは、上書きして消してしまわないよう、保存しない
     private bool _saveBlocked;
 
+    // 転送が終わったら一覧を取り直す（まとめて 1 回にする）
+    private static readonly TimeSpan RefreshDelay = TimeSpan.FromSeconds(1.5);
+    private readonly HashSet<FilePaneViewModel> _refreshScheduled = [];
+    private readonly TimeProvider _time;
+    private readonly SynchronizationContext? _context;
+    private TransferController? _transferController;
+
     /// <summary>部品を組み合わせて作る。<paramref name="services"/> が null なら、接続はしない（見本の画面）。</summary>
     public MainViewModel(
         FilePaneViewModel local,
@@ -48,7 +65,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ConnectionListViewModel connections,
         ConnectionStatusViewModel connection,
         AppServices? services = null,
-        ConnectionService? connector = null)
+        ConnectionService? connector = null,
+        TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(local);
         ArgumentNullException.ThrowIfNull(remote);
@@ -62,6 +80,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Connection = connection;
         _services = services;
         _connector = connector;
+        _time = timeProvider ?? TimeProvider.System;
+        _context = SynchronizationContext.Current;
         _activePane = local;
         local.IsActive = true;
         local.ActivationRequested += (_, _) => ActivePane = local;
@@ -80,6 +100,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         EditConnectionCommand = new AsyncRelayCommand<ConnectionItemViewModel>(EditConnectionAsync);
         DuplicateConnectionCommand = new AsyncRelayCommand<ConnectionItemViewModel>(DuplicateConnectionAsync);
         DeleteConnectionCommand = new AsyncRelayCommand<ConnectionItemViewModel>(DeleteConnectionAsync);
+        UploadCommand = new AsyncRelayCommand(() => UploadEntriesAsync([.. Local.SelectedRows.Select(row => row.Entry)]), () => CanUpload);
+        DownloadCommand = new AsyncRelayCommand(DownloadSelectedAsync, () => CanDownload);
+        local.PropertyChanged += OnPanePropertyChanged;
+        remote.PropertyChanged += OnPanePropertyChanged;
 
         // 接続先がまだ無いときは、サーバー側の案内で作り方を教える
         connections.PropertyChanged += (_, e) =>
@@ -167,6 +191,24 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     public IAsyncRelayCommand<ConnectionItemViewModel> DeleteConnectionCommand { get; }
 
+    /// <summary>選んだファイルをサーバーへ送る（Ctrl+U）。</summary>
+    public IAsyncRelayCommand UploadCommand { get; }
+
+    /// <summary>選んだファイルをパソコンへ受け取る（Ctrl+D）。</summary>
+    public IAsyncRelayCommand DownloadCommand { get; }
+
+    /// <summary>アップロードできるか（接続していて、パソコン側で何か選んでいる）。</summary>
+    public bool CanUpload =>
+        _transferController is not null && Remote.HasLoaded
+        && Local.SelectedRows.Any(row => row.Entry.Type is FileEntryType.File or FileEntryType.Directory);
+
+    /// <summary>ダウンロードできるか（接続していて、サーバー側で何か選んでいて、パソコン側でフォルダを開いている）。</summary>
+    public bool CanDownload =>
+        _transferController is not null && Local.HasLoaded && Local.CurrentPath.Length > 0 && Remote.SelectedRows.Count > 0;
+
+    /// <summary>まだ終わっていない転送の数。</summary>
+    public int PendingTransferCount => _transferController?.PendingCount ?? 0;
+
     /// <summary>接続した、または切った。</summary>
     public event EventHandler? SessionChanged;
 
@@ -210,7 +252,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             new ConnectionListViewModel(profiles),
             new ConnectionStatusViewModel(),
             services,
-            new ConnectionService(trust, services.Secrets, services.Prompts));
+            new ConnectionService(trust, services.Secrets, services.Prompts),
+            time);
         if (loadFailure is not null)
         {
             main._saveBlocked = true;
@@ -227,11 +270,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public async Task ConnectAsync(ConnectionItemViewModel item, string? password = null)
     {
         ArgumentNullException.ThrowIfNull(item);
-        Connections.Select(item);
-        if (_connector is null)
-            return; // 見本の画面では選ぶだけ
-        if ((ReferenceEquals(item, _connected) && IsConnected) || ReferenceEquals(item, _connectingItem))
+        if (_connector is null || (ReferenceEquals(item, _connected) && IsConnected) || ReferenceEquals(item, _connectingItem))
+        {
+            Connections.Select(item); // 見本の画面では選ぶだけ
             return;
+        }
+        // 別の接続先にすると、いまの接続の転送は止まる
+        if (_session is not null && !await ConfirmStopTransfersAsync(closingApp: false).ConfigureAwait(true))
+            return;
+        Connections.Select(item);
 
         // ほかの接続の試みはやめる（その後始末は、そちらが自分でする）
         _connecting?.Cancel();
@@ -301,6 +348,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         IsConnected = true;
         Connection.ShowConnected(item);
         var profile = item.Profile;
+        await AttachTransfersAsync(result, item).ConfigureAwait(true);
         var start = profile.RemoteDirectory.Length > 0 ? profile.RemoteDirectory : result.HomeDirectory;
         await Remote.SetSourceAsync(new RemoteFileSource(result.Browser!, profile.Host), start).ConfigureAwait(true);
         if (profile.LocalDirectory.Length > 0 && Directory.Exists(profile.LocalDirectory))
@@ -333,15 +381,52 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         await ConnectAsync(item, password).ConfigureAwait(true);
     }
 
-    /// <summary>接続を切る。接続しているところなら、やめる。</summary>
+    /// <summary>接続を切る。接続しているところなら、やめる。転送が残っていれば、止めてよいか聞く。</summary>
     public async Task DisconnectAsync()
     {
+        if (_session is not null && !await ConfirmStopTransfersAsync(closingApp: false).ConfigureAwait(true))
+            return;
         _connecting?.Cancel();
         Connection.ShowDisconnected();
         await CloseSessionAsync().ConfigureAwait(true);
     }
 
-    // いまの接続を閉じ、サーバー側の一覧を空にする
+    /// <summary>
+    /// アプリを閉じる前に呼ぶ。転送が残っていれば止めてよいか聞き、よければ切断して送信待ちを保存する。閉じてよければ true。
+    /// </summary>
+    public async Task<bool> PrepareToCloseAsync()
+    {
+        if (!await ConfirmStopTransfersAsync(closingApp: true).ConfigureAwait(true))
+            return false;
+        _connecting?.Cancel();
+        await CloseSessionAsync().ConfigureAwait(true);
+        return true;
+    }
+
+    /// <summary>
+    /// パソコンのファイルやフォルダ（パスで指定）を、サーバーのいまのフォルダへ送る（ドラッグ＆ドロップなど）。送る件数を返す。
+    /// </summary>
+    public Task<int> UploadAsync(IEnumerable<string> localPaths)
+    {
+        ArgumentNullException.ThrowIfNull(localPaths);
+        var entries = new List<FileEntry>();
+        foreach (var path in localPaths)
+        {
+            if (Directory.Exists(path))
+            {
+                var info = new DirectoryInfo(path);
+                entries.Add(new FileEntry(info.Name, info.FullName, FileEntryType.Directory, 0, info.LastWriteTimeUtc));
+            }
+            else if (File.Exists(path))
+            {
+                var info = new FileInfo(path);
+                entries.Add(new FileEntry(info.Name, info.FullName, FileEntryType.File, info.Length, info.LastWriteTimeUtc));
+            }
+        }
+        return UploadEntriesAsync(entries);
+    }
+
+    // いまの接続を閉じ、サーバー側の一覧を空にする。転送は止めて、送信待ちを保存する
     private async Task CloseSessionAsync()
     {
         var session = _session;
@@ -351,11 +436,195 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (connected is not null)
             connected.IsConnected = false;
         IsConnected = false;
+        await DetachTransfersAsync().ConfigureAwait(true);
         if (session is null)
             return;
         await Remote.SetSourceAsync(null).ConfigureAwait(true);
         await session.DisposeQuietlyAsync().ConfigureAwait(true);
         SessionChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // 接続先ごとの送信待ちを用意する。前回の残りがあれば読み込む（勝手には始めない）
+    private async Task AttachTransfersAsync(ConnectResult result, ConnectionItemViewModel item)
+    {
+        var profile = item.Profile;
+        var options = new TransferOptions { MaxConcurrency = Math.Clamp(profile.MaxConcurrency, 1, 10) };
+        var queueFile = item.IsTemporary || _services is null ? null : _services.QueueFile(profile.Id);
+        var controller = new TransferController(result.Factory!, options, queueFile, _time);
+        await controller.RestoreAsync().ConfigureAwait(true);
+        controller.ItemChanged += OnTransferItemChanged;
+        _transferController = controller;
+        Transfers.SetSource(controller);
+        Transfers.Start();
+        NotifyTransferCommands();
+    }
+
+    private async Task DetachTransfersAsync()
+    {
+        if (_transferController is not { } controller)
+            return;
+        _transferController = null;
+        controller.ItemChanged -= OnTransferItemChanged;
+        Transfers.SetSource(EmptyTransferSource.Instance);
+        NotifyTransferCommands();
+        await controller.DisposeAsync().ConfigureAwait(true);
+    }
+
+    private async Task<bool> ConfirmStopTransfersAsync(bool closingApp)
+    {
+        // 止めてある送信待ちは、閉じても保存されて次に続けられるので、聞かない
+        if (_transferController is not { IsPaused: false } controller || controller.PendingCount == 0)
+            return true;
+        if (_services?.TransferDialogs is not { } dialogs)
+            return true;
+        return await dialogs.ConfirmStopTransfersAsync(controller.PendingCount, closingApp).ConfigureAwait(true);
+    }
+
+    private async Task<int> UploadEntriesAsync(IReadOnlyList<FileEntry> entries)
+    {
+        if (_transferController is not { } controller || Local.Source is not { } local || !Remote.HasLoaded)
+            return 0;
+        var targets = entries.Where(entry => entry.Type is FileEntryType.File or FileEntryType.Directory).ToList();
+        if (targets.Count == 0)
+            return 0;
+        var remoteFolder = Remote.CurrentPath;
+        var conflicts = targets.Where(entry => Remote.HasItemNamed(entry.Name)).Select(entry => entry.Name).ToList();
+        if (await ChooseConflictPolicyAsync(TransferDirection.Upload, conflicts).ConfigureAwait(true) is not { } policy)
+            return 0;
+
+        TransferPlan plan;
+        try
+        {
+            plan = await TransferPlanner.PlanUploadAsync(local, targets, remoteFolder, policy).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Local.ShowNotice("アップロードできませんでした", DisplayText.Describe(FailureClassifier.FromException(ex)));
+            return 0;
+        }
+        return Enqueue(controller, plan, Local);
+    }
+
+    private async Task DownloadSelectedAsync()
+    {
+        if (_transferController is not { } controller || Remote.Source is not { } remote || !CanDownload)
+            return;
+        var targets = Remote.SelectedRows.Select(row => row.Entry).ToList();
+        var localFolder = Local.CurrentPath;
+        var conflicts = targets.Where(entry => Local.HasItemNamed(TransferPlanner.ToLocalName(entry.Name))).Select(entry => entry.Name).ToList();
+        if (await ChooseConflictPolicyAsync(TransferDirection.Download, conflicts).ConfigureAwait(true) is not { } policy)
+            return;
+
+        TransferPlan plan;
+        try
+        {
+            plan = await TransferPlanner.PlanDownloadAsync(remote, targets, localFolder, policy).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Remote.ShowNotice("ダウンロードできませんでした", DisplayText.Describe(FailureClassifier.FromException(ex)));
+            return;
+        }
+        Enqueue(controller, plan, Remote);
+    }
+
+    // 依頼を送信待ちに入れる。中を見られなかったフォルダがあれば、選んだ側に知らせる
+    private int Enqueue(TransferController controller, TransferPlan plan, FilePaneViewModel from)
+    {
+        // 依頼を作っているあいだに切断した
+        if (!ReferenceEquals(controller, _transferController))
+            return 0;
+        if (plan.Requests.Count > 0)
+            controller.Enqueue(plan.Requests);
+        if (plan.UnreadableFolders.Count > 0)
+        {
+            from.ShowNotice(
+                "一部のフォルダは送りませんでした",
+                "中を見られないフォルダがあります",
+                string.Join("、", plan.UnreadableFolders.Take(3)) + (plan.UnreadableFolders.Count > 3 ? " ほか" : ""));
+        }
+        else if (plan.TooMany)
+        {
+            from.ShowNotice("一部だけ送ります", $"一度に送れるのは {TransferPlanner.MaxFiles:N0} ファイルまでです");
+        }
+        return plan.Requests.Count;
+    }
+
+    private async Task<ConflictPolicy?> ChooseConflictPolicyAsync(TransferDirection direction, IReadOnlyList<string> conflicts)
+    {
+        if (conflicts.Count == 0)
+            return ConflictPolicy.Overwrite; // 送り先にないものだけ（フォルダの中にも、ぶつかるものはない）
+        if (_services?.TransferDialogs is not { } dialogs)
+            return ConflictPolicy.Overwrite;
+        return await dialogs.AskConflictAsync(direction, [.. conflicts.Take(5)], conflicts.Count).ConfigureAwait(true);
+    }
+
+    private void OnPanePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(FilePaneViewModel.SelectedRows) or nameof(FilePaneViewModel.CurrentPath) or nameof(FilePaneViewModel.HasSource))
+            NotifyTransferCommands();
+    }
+
+    private void NotifyTransferCommands()
+    {
+        UploadCommand.NotifyCanExecuteChanged();
+        DownloadCommand.NotifyCanExecuteChanged();
+    }
+
+    // 送り終わったファイルが、開いているフォルダの中なら、一覧を取り直す（FFFTP のように一覧が消えたりはしない）
+    private void OnTransferItemChanged(object? sender, TransferItemSnapshot snapshot)
+    {
+        if (snapshot.State != TransferState.Completed)
+            return;
+        var upload = snapshot.Direction == TransferDirection.Upload;
+        Post(() => RequestRefresh(upload ? Remote : Local, upload ? snapshot.RemotePath : snapshot.LocalPath));
+    }
+
+    private void RequestRefresh(FilePaneViewModel pane, string changedPath)
+    {
+        if (!pane.HasLoaded || !IsInside(pane, changedPath))
+            return;
+        lock (_refreshScheduled)
+        {
+            if (!_refreshScheduled.Add(pane))
+                return;
+        }
+        _ = RefreshLaterAsync(pane);
+    }
+
+    private async Task RefreshLaterAsync(FilePaneViewModel pane)
+    {
+        try
+        {
+            await Task.Delay(RefreshDelay, _time).ConfigureAwait(true);
+        }
+        finally
+        {
+            lock (_refreshScheduled)
+                _refreshScheduled.Remove(pane);
+        }
+        if (pane.HasLoaded)
+            await pane.RefreshAsync().ConfigureAwait(true);
+    }
+
+    private static bool IsInside(FilePaneViewModel pane, string path)
+    {
+        var folder = pane.CurrentPath;
+        if (pane.Kind == PaneKind.Remote)
+        {
+            var prefix = folder.EndsWith('/') ? folder : folder + "/";
+            return path.StartsWith(prefix, StringComparison.Ordinal);
+        }
+        var localPrefix = Path.EndsInDirectorySeparator(folder) ? folder : folder + Path.DirectorySeparatorChar;
+        return path.StartsWith(localPrefix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void Post(Action action)
+    {
+        if (_context is null)
+            action();
+        else
+            _context.Post(_ => action(), null);
     }
 
     private async Task NewConnectionAsync()
@@ -437,7 +706,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (!item.IsTemporary && !await _services.Dialogs.ConfirmDeleteAsync(item.Profile).ConfigureAwait(true))
             return;
         if (ReferenceEquals(item, _connected) || ReferenceEquals(item, _connectingItem))
+        {
             await DisconnectAsync().ConfigureAwait(true);
+            if (ReferenceEquals(item, _connected))
+                return; // 転送を止めたくないので、切断をやめた
+        }
         _sessionPasswords.Remove(item.Profile.Id);
         if (!item.IsTemporary)
             _services.Secrets.TryDelete(item.Profile.Id);
@@ -491,6 +764,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _connecting?.Cancel();
+        if (_transferController is { } controller)
+            _ = controller.DisposeAsync().AsTask();
         if (_session is { } session)
             _ = session.DisposeQuietlyAsync();
         Transfers.Dispose();

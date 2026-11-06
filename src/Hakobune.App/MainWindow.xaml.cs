@@ -15,6 +15,7 @@ public sealed partial class MainWindow : Window
     private readonly MainView _view;
     private readonly AppOptions _options;
     private readonly TaskCompletionSource _loaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private bool _readyToClose;
 
     internal MainWindow(MainViewModel viewModel, AppOptions options)
     {
@@ -42,7 +43,27 @@ public sealed partial class MainWindow : Window
         PlaceWindow(options.Width, options.Height, center: options.ScreenshotPath is null);
 
         _view.Loaded += (_, _) => _loaded.TrySetResult();
+        AppWindow.Closing += OnClosing;
         Closed += (_, _) => _viewModel.Dispose();
+    }
+
+    // 閉じる前に、転送が残っていれば止めてよいか聞き、送信待ちを保存してから閉じる
+    private async void OnClosing(AppWindow sender, AppWindowClosingEventArgs args)
+    {
+        if (_readyToClose)
+            return;
+        args.Cancel = true;
+        try
+        {
+            if (!await _viewModel.PrepareToCloseAsync())
+                return;
+        }
+        catch (Exception ex)
+        {
+            CrashReport.Write(ex);
+        }
+        _readyToClose = true;
+        Close();
     }
 
     /// <summary>画面ができあがった（ダイアログを出せるようになった）。</summary>

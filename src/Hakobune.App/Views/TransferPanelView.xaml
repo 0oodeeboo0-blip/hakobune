@@ -102,10 +102,31 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+            <!--  一時停止中なら、その理由。そうでなければ件数  -->
+            <StackPanel
+                Grid.Column="3"
+                VerticalAlignment="Center"
+                Orientation="Horizontal"
+                Spacing="6"
+                Visibility="{x:Bind ViewModel.IsPaused, Mode=OneWay}">
+                <FontIcon
+                    FontSize="12"
+                    Foreground="{ThemeResource HakobuneWarningTagTextBrush}"
+                    Glyph="&#xE769;" />
+                <TextBlock
+                    MaxWidth="420"
+                    VerticalAlignment="Center"
+                    FontSize="12"
+                    Foreground="{ThemeResource HakobuneWarningTagTextBrush}"
+                    Text="{x:Bind ViewModel.PauseText, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis"
+                    ToolTipService.ToolTip="{x:Bind ViewModel.PauseText, Mode=OneWay}" />
+            </StackPanel>
             <TextBlock
                 Grid.Column="3"
                 Style="{StaticResource SecondaryCaptionTextStyle}"
-                Text="{x:Bind ViewModel.SummaryText, Mode=OneWay}" />
+                Text="{x:Bind ViewModel.SummaryText, Mode=OneWay}"
+                Visibility="{x:Bind helpers:Ui.VisibleUnless(ViewModel.IsPaused), Mode=OneWay}" />
             <Button
                 Grid.Column="4"
                 Height="32"
@@ -118,16 +139,37 @@
                     <TextBlock FontWeight="SemiBold" Text="失敗分を再送" />
                 </StackPanel>
             </Button>
-            <Button
+            <StackPanel
                 Grid.Column="5"
-                Width="32"
-                Height="32"
-                AutomationProperties.Name="すべて一時停止"
-                Command="{x:Bind ViewModel.PauseAllCommand, Mode=OneWay}"
-                Style="{StaticResource SubtleIconButtonStyle}"
-                ToolTipService.ToolTip="すべて一時停止">
-                <FontIcon FontSize="14" Glyph="&#xE769;" />
-            </Button>
+                Orientation="Horizontal"
+                Spacing="2">
+                <Button
+                    Width="32"
+                    Height="32"
+                    AutomationProperties.Name="{x:Bind ViewModel.PauseButtonText, Mode=OneWay}"
+                    Command="{x:Bind ViewModel.PauseAllCommand, Mode=OneWay}"
+                    Style="{StaticResource SubtleIconButtonStyle}"
+                    ToolTipService.ToolTip="{x:Bind ViewModel.PauseButtonText, Mode=OneWay}">
+                    <FontIcon FontSize="14" Glyph="{x:Bind ViewModel.PauseButtonGlyph, Mode=OneWay}" />
+                </Button>
+                <Button
+                    Width="32"
+                    Height="32"
+                    AutomationProperties.Name="転送のその他の操作"
+                    Style="{StaticResource SubtleIconButtonStyle}"
+                    ToolTipService.ToolTip="その他の操作">
+                    <FontIcon FontSize="14" Glyph="&#xE712;" />
+                    <Button.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedRight">
+                            <MenuFlyoutItem Command="{x:Bind ViewModel.ClearFinishedCommand, Mode=OneWay}" Text="終わった項目を一覧から消す">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE74D;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
+            </StackPanel>
             <Button
                 Grid.Column="6"
                 Width="32"
@@ -292,37 +334,42 @@
                                     Orientation="Horizontal"
                                     Spacing="2">
                                     <Button
-                                        AutomationProperties.Name="一時停止"
-                                        Style="{StaticResource RowActionButtonStyle}"
-                                        ToolTipService.ToolTip="一時停止"
-                                        Visibility="{x:Bind CanPause, Mode=OneWay}">
-                                        <FontIcon FontSize="14" Glyph="&#xE769;" />
-                                    </Button>
-                                    <Button
                                         AutomationProperties.Name="今すぐ再試行"
+                                        Click="OnRetryNowClick"
                                         Style="{StaticResource RowActionButtonStyle}"
                                         ToolTipService.ToolTip="今すぐ再試行"
                                         Visibility="{x:Bind CanRetryNow, Mode=OneWay}">
                                         <FontIcon FontSize="14" Glyph="&#xE72C;" />
                                     </Button>
                                     <Button
-                                        AutomationProperties.Name="詳細"
+                                        AutomationProperties.Name="失敗の詳細"
                                         Style="{StaticResource RowActionButtonStyle}"
                                         ToolTipService.ToolTip="詳細"
                                         Visibility="{x:Bind CanShowDetails, Mode=OneWay}">
                                         <FontIcon FontSize="14" Glyph="&#xE946;" />
+                                        <Button.Flyout>
+                                            <Flyout Placement="LeftEdgeAlignedTop">
+                                                <TextBlock
+                                                    MaxWidth="420"
+                                                    IsTextSelectionEnabled="True"
+                                                    Text="{x:Bind FailureDetails, Mode=OneWay}"
+                                                    TextWrapping="Wrap" />
+                                            </Flyout>
+                                        </Button.Flyout>
                                     </Button>
                                     <Button
-                                        AutomationProperties.Name="再試行"
+                                        AutomationProperties.Name="送り直す"
+                                        Click="OnRetryClick"
                                         Style="{StaticResource RowActionButtonStyle}"
-                                        ToolTipService.ToolTip="再試行"
+                                        ToolTipService.ToolTip="送り直す"
                                         Visibility="{x:Bind CanRetry, Mode=OneWay}">
                                         <FontIcon FontSize="14" Glyph="&#xE72C;" />
                                     </Button>
                                     <Button
-                                        AutomationProperties.Name="キャンセル"
+                                        AutomationProperties.Name="取り消す"
+                                        Click="OnCancelClick"
                                         Style="{StaticResource RowActionButtonStyle}"
-                                        ToolTipService.ToolTip="キャンセル"
+                                        ToolTipService.ToolTip="取り消す"
                                         Visibility="{x:Bind CanCancel, Mode=OneWay}">
                                         <FontIcon FontSize="14" Glyph="&#xE711;" />
                                     </Button>

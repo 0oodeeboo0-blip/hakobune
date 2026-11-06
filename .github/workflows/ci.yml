@@ -210,8 +210,9 @@ jobs:
             exit 1
           }
 
-      # 本物の FTP サーバー（pyftpdlib）にクイック接続し、サーバーのファイルが並んだ画面を撮る。日本語のファイル名も確かめる。
-      - name: 接続した画面の写真
+      # 本物の FTP サーバー（pyftpdlib）にクイック接続し、フォルダをアップロードして、サーバーに全部届いたかを確かめる。
+      # 日本語のファイル名も確かめる。終わった画面を写真に撮る。
+      - name: 接続と転送のテスト
         shell: pwsh
         run: |
           python -m pip install --disable-pip-version-check --quiet pyftpdlib
@@ -250,10 +251,23 @@ jobs:
             exit 1
           }
 
+          # 送るフォルダ（日本語の名前と、入れ子のフォルダを含む）
+          $upload = Join-Path $env:RUNNER_TEMP '公開用'
+          New-Item -ItemType Directory -Force (Join-Path $upload '画像'), (Join-Path $upload 'css') | Out-Null
+          $sent = [ordered]@{
+            'トップページ.html' = 20480; 'about.html' = 4096; 'css\site.css' = 2048
+            '画像\商品_01.jpg' = 1048576; '画像\商品_02.jpg' = 786432; '画像\ロゴ.png' = 30000
+          }
+          foreach ($name in $sent.Keys) {
+            $bytes = New-Object byte[] $sent[$name]
+            (New-Object System.Random 42).NextBytes($bytes)
+            [System.IO.File]::WriteAllBytes((Join-Path $upload $name), $bytes)
+          }
+
           $exe = Join-Path $PWD 'publish\Hakobune-win-x64\Hakobune.exe'
           New-Item -ItemType Directory -Force screenshots | Out-Null
           $png = Join-Path $PWD 'screenshots\connected.png'
-          $p = Start-Process -FilePath $exe -ArgumentList "--connect ftp://hakobune:hakobune-pass@127.0.0.1:2121/ --theme light --screenshot `"$png`"" -PassThru
+          $p = Start-Process -FilePath $exe -ArgumentList "--connect ftp://hakobune:hakobune-pass@127.0.0.1:2121/ --upload `"$upload`" --theme light --screenshot `"$png`"" -PassThru
           $null = $p.Handle
           $finished = $p.WaitForExit(180000)
           if (-not $finished) {
@@ -277,6 +291,20 @@ jobs:
           } else {
             Write-Host "::error::接続した画面: 画面写真がありません (終了コード $($p.ExitCode))"
             $failed = $true
+          }
+          # 送ったファイルが、同じ大きさ・同じ中身でサーバーに届いたか
+          foreach ($name in $sent.Keys) {
+            $local = Join-Path $upload $name
+            $remote = Join-Path (Join-Path $root '公開用') $name
+            if (-not (Test-Path $remote)) {
+              Write-Host "::error::サーバーに届いていません: $name"
+              $failed = $true
+            } elseif ((Get-FileHash $local).Hash -ne (Get-FileHash $remote).Hash) {
+              Write-Host "::error::中身が違います: $name"
+              $failed = $true
+            } else {
+              Write-Host "届きました: $name ($((Get-Item $remote).Length) バイト)"
+            }
           }
           if ($failed) {
             exit 1
