@@ -5,6 +5,7 @@ using Hakobune.Core.Remote.Ftp;
 using Hakobune.Core.Remote.Sftp;
 using Hakobune.Core.Transfers;
 using Hakobune.Presentation.Connections;
+using Hakobune.Presentation.Files;
 using Hakobune.Presentation.Transfers;
 
 namespace Hakobune.Presentation.Tests.Connections;
@@ -25,6 +26,9 @@ internal sealed class FakeLoginServer
 
     /// <summary>アップロードの最初に待たせたいとき。</summary>
     public Func<CancellationToken, Task>? BeforeUpload { get; set; }
+
+    /// <summary>画面からの操作の記録（作ったフォルダ、名前の変更、削除、属性の変更）。</summary>
+    public ConcurrentQueue<string> Operations { get; } = new();
 
     public TransferFailure? ConnectFault { get; set; }
 
@@ -94,7 +98,11 @@ internal sealed class FakeLoginServer
                 : null);
         }
 
-        public Task CreateDirectoryAsync(string path, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task CreateDirectoryAsync(string path, CancellationToken cancellationToken)
+        {
+            server.Operations.Enqueue("mkdir " + path);
+            return Task.CompletedTask;
+        }
 
         public async Task UploadAsync(Stream source, string remotePath, long offset, IProgress<long>? progress, CancellationToken cancellationToken)
         {
@@ -115,9 +123,29 @@ internal sealed class FakeLoginServer
             progress?.Report(data.Length - offset);
         }
 
-        public Task DeleteFileAsync(string path, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task DeleteFileAsync(string path, CancellationToken cancellationToken)
+        {
+            server.Operations.Enqueue("rm " + path);
+            return Task.CompletedTask;
+        }
 
-        public Task RenameAsync(string fromPath, string toPath, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task RenameAsync(string fromPath, string toPath, CancellationToken cancellationToken)
+        {
+            server.Operations.Enqueue($"mv {fromPath} {toPath}");
+            return Task.CompletedTask;
+        }
+
+        public Task DeleteDirectoryAsync(string path, CancellationToken cancellationToken)
+        {
+            server.Operations.Enqueue("rmdir " + path);
+            return Task.CompletedTask;
+        }
+
+        public Task SetPermissionsAsync(string path, int mode, CancellationToken cancellationToken)
+        {
+            server.Operations.Enqueue($"chmod {Convert.ToString(mode, 8)} {path}");
+            return Task.CompletedTask;
+        }
 
         public Task SetModifiedTimeAsync(string path, DateTimeOffset modified, CancellationToken cancellationToken) => Task.CompletedTask;
 
@@ -238,5 +266,41 @@ internal sealed class ScriptedTransferDialogs : ITransferDialogs
     {
         StopQuestions.Add((pendingCount, closingApp));
         return Task.FromResult(StopAnswer);
+    }
+}
+
+/// <summary>答えを決めておける、ファイルの操作のときの質問。</summary>
+internal sealed class ScriptedFileDialogs : IFileDialogs
+{
+    public Queue<string?> Names { get; } = new();
+
+    public bool ConfirmDelete { get; set; } = true;
+
+    public int? Permissions { get; set; }
+
+    public List<(string Title, string Initial, string? ProblemForAnswer)> NameQuestions { get; } = [];
+
+    public List<(IReadOnlyList<string> Names, bool Remote, bool RecycleBin)> DeleteQuestions { get; } = [];
+
+    public List<int?> PermissionQuestions { get; } = [];
+
+    public Task<string?> AskNameAsync(string title, string initialName, string primaryButtonText, Func<string, string?> validate)
+    {
+        var answer = Names.Count > 0 ? Names.Dequeue() : null;
+        NameQuestions.Add((title, initialName, answer is null ? null : validate(answer)));
+        // 画面と同じく、問題のある名前では決定できない
+        return Task.FromResult(answer is not null && validate(answer) is null ? answer : null);
+    }
+
+    public Task<bool> ConfirmDeleteAsync(IReadOnlyList<string> names, bool remote, bool recycleBin)
+    {
+        DeleteQuestions.Add((names, remote, recycleBin));
+        return Task.FromResult(ConfirmDelete);
+    }
+
+    public Task<int?> AskPermissionsAsync(IReadOnlyList<string> names, int? currentMode)
+    {
+        PermissionQuestions.Add(currentMode);
+        return Task.FromResult(Permissions);
     }
 }

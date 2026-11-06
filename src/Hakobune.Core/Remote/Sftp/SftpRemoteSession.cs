@@ -230,6 +230,34 @@ public sealed class SftpRemoteSession : IRemoteSession
     public Task RenameAsync(string fromPath, string toPath, CancellationToken cancellationToken) =>
         RunAsync(client => client.RenameFileAsync(fromPath, toPath, cancellationToken), cancellationToken);
 
+    // SFTP では中身のあるフォルダは消せないので、下から順に消す
+    public Task DeleteDirectoryAsync(string path, CancellationToken cancellationToken) =>
+        RunAsync(client => DeleteTreeAsync(client, path, cancellationToken), cancellationToken);
+
+    public Task SetPermissionsAsync(string path, int mode, CancellationToken cancellationToken) =>
+        RunAsync(
+            client => Task.Run(() => client.ChangePermissions(path, (short)UnixMode.ToOctalDigits(mode)), cancellationToken),
+            cancellationToken);
+
+    private static async Task DeleteTreeAsync(SftpClient client, string path, CancellationToken cancellationToken)
+    {
+        var children = new List<ISftpFile>();
+        await foreach (var entry in client.ListDirectoryAsync(path, cancellationToken).ConfigureAwait(false))
+        {
+            if (entry.Name is not ("." or ".."))
+                children.Add(entry);
+        }
+        foreach (var child in children)
+        {
+            // リンクはたどらず、リンクそのものを消す
+            if (child.IsDirectory && !child.IsSymbolicLink)
+                await DeleteTreeAsync(client, child.FullName, cancellationToken).ConfigureAwait(false);
+            else
+                await client.DeleteFileAsync(child.FullName, cancellationToken).ConfigureAwait(false);
+        }
+        await client.DeleteDirectoryAsync(path, cancellationToken).ConfigureAwait(false);
+    }
+
     public Task SetModifiedTimeAsync(string path, DateTimeOffset modified, CancellationToken cancellationToken) =>
         RunAsync(client => Task.Run(() => client.SetLastWriteTimeUtc(path, modified.UtcDateTime), cancellationToken), cancellationToken);
 

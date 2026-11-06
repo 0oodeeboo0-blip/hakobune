@@ -49,6 +49,15 @@ public interface IRemoteSession : IAsyncDisposable
     /// <summary>ファイルを削除する。</summary>
     Task DeleteFileAsync(string path, CancellationToken cancellationToken);
 
+    /// <summary>フォルダを中身ごと削除する。</summary>
+    Task DeleteDirectoryAsync(string path, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 属性（パーミッション）を変える。<paramref name="mode"/> は 8 進の 0644 なら 420（<c>Convert.ToInt32("644", 8)</c>）。
+    /// Windows の FTP サーバーなど、対応していないサーバーもある。
+    /// </summary>
+    Task SetPermissionsAsync(string path, int mode, CancellationToken cancellationToken);
+
     /// <summary>名前を変える（移動する）。</summary>
     Task RenameAsync(string fromPath, string toPath, CancellationToken cancellationToken);
 

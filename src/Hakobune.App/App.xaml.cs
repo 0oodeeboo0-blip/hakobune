@@ -36,7 +36,7 @@ public partial class App : Application
                 () => _window is null ? 0 : WinRT.Interop.WindowNative.GetWindowHandle(_window));
             var viewModel = Options.Demo is { } scenario
                 ? await DemoData.CreateAsync(scenario, SynchronizationContext.Current)
-                : await MainViewModel.CreateAsync(new AppServices(DataDirectory, new CredentialStore(), dialogs, dialogs, dialogs));
+                : await MainViewModel.CreateAsync(new AppServices(DataDirectory, new CredentialStore(), dialogs, dialogs, dialogs, dialogs, new RecycleBinFileOperations()));
             _window = new MainWindow(viewModel, Options);
             _window.Activate();
 

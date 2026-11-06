@@ -73,6 +73,20 @@ public class RemoteIntegrationTests
         var nested = await session.ListAsync(RemotePath.Combine(directory, "sub/深い"), cancellationToken);
         Assert.Contains(nested, item => item.Name == "フォルダ" && item.IsDirectory);
 
+        // 属性を変える
+        await session.SetPermissionsAsync(RemotePath.Combine(directory, "big.bin"), Convert.ToInt32("600", 8), cancellationToken);
+        var changed = Assert.Single(await session.ListAsync(directory, cancellationToken), item => item.Name == "big.bin");
+        if (UnixMode.FromText(changed.Permissions) is { } mode)
+            Assert.Equal(Convert.ToInt32("600", 8), mode & 0x1FF);
+
+        // フォルダの名前を変え、中身ごと消す
+        using (var inside = new MemoryStream("x"u8.ToArray()))
+            await session.UploadAsync(inside, RemotePath.Combine(directory, "sub/深い/フォルダ/x.txt"), 0, null, cancellationToken);
+        await session.RenameAsync(RemotePath.Combine(directory, "sub"), RemotePath.Combine(directory, "移した"), cancellationToken);
+        Assert.NotNull(await session.GetItemAsync(RemotePath.Combine(directory, "移した/深い/フォルダ/x.txt"), cancellationToken));
+        await session.DeleteDirectoryAsync(RemotePath.Combine(directory, "移した"), cancellationToken);
+        Assert.DoesNotContain(await session.ListAsync(directory, cancellationToken), item => item.Name == "移した");
+
         await session.KeepAliveAsync(cancellationToken);
     }
 

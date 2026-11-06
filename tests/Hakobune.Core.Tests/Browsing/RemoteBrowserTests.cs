@@ -128,4 +128,33 @@ public class RemoteBrowserTests
         Assert.Equal(new[] { "c.txt", "new", "sub" }, listing.Items.Select(item => item.Name).Order().ToArray());
         Assert.Equal("/", await browser.GetHomeDirectoryAsync(cancellationToken));
     }
+
+    [Fact]
+    public async Task Folders_can_be_deleted_with_their_contents_and_renamed()
+    {
+        var server = ServerWithFiles();
+        server.Files.WriteFile("/data/sub/c.txt", new byte[] { 3 }, 0, DateTimeOffset.UtcNow);
+        await using var browser = new RemoteBrowser(server);
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        await browser.RenameAsync("/data/sub", "/data/moved", cancellationToken);
+        Assert.NotNull(server.Files.GetItem("/data/moved/c.txt"));
+
+        await browser.DeleteDirectoryAsync("/data/moved", cancellationToken);
+        var listing = await browser.ListAsync("/data", cancellationToken);
+
+        Assert.Equal(new[] { "a.txt", "b.txt" }, listing.Items.Select(item => item.Name).Order().ToArray());
+        Assert.Null(server.Files.GetItem("/data/moved/c.txt"));
+    }
+
+    [Fact]
+    public async Task Permissions_are_changed_through_the_browsing_connection()
+    {
+        var server = ServerWithFiles();
+        await using var browser = new RemoteBrowser(server);
+
+        await browser.SetPermissionsAsync("/data/a.txt", Convert.ToInt32("600", 8), TestContext.Current.CancellationToken);
+
+        Assert.Equal(Convert.ToInt32("600", 8), server.Files.GetMode("/data/a.txt"));
+    }
 }

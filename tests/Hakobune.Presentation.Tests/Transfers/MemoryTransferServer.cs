@@ -65,6 +65,10 @@ internal sealed class MemoryTransferServer : IRemoteSessionFactory
 
         public Task RenameAsync(string fromPath, string toPath, CancellationToken cancellationToken) => Task.CompletedTask;
 
+        public Task DeleteDirectoryAsync(string path, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task SetPermissionsAsync(string path, int mode, CancellationToken cancellationToken) => Task.CompletedTask;
+
         public Task SetModifiedTimeAsync(string path, DateTimeOffset modified, CancellationToken cancellationToken) => Task.CompletedTask;
 
         public Task KeepAliveAsync(CancellationToken cancellationToken) => Task.CompletedTask;

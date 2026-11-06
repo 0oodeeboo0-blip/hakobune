@@ -1,7 +1,9 @@
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Hakobune.Core.Browsing;
 using Hakobune.Core.Connections;
+using Hakobune.Core.Remote;
 using Hakobune.Core.Text;
 using Hakobune.Core.Transfers;
 using Hakobune.Presentation.Connections;
@@ -16,12 +18,16 @@ namespace Hakobune.Presentation;
 /// <param name="Prompts">接続のときに利用者に聞く画面。</param>
 /// <param name="Dialogs">接続先の作成・編集の画面。</param>
 /// <param name="TransferDialogs">転送のときに聞く画面。null なら聞かずに上書きする（試験用）。</param>
+/// <param name="FileDialogs">新しいフォルダや削除のときに聞く画面。null ならその操作はできない。</param>
+/// <param name="LocalFiles">パソコンのファイルの操作（Windows ではごみ箱を使う）。null ならそのまま消す。</param>
 public sealed record AppServices(
     string DataDirectory,
     ISecretStore Secrets,
     IConnectionPrompts Prompts,
     IConnectionDialogs Dialogs,
-    ITransferDialogs? TransferDialogs = null)
+    ITransferDialogs? TransferDialogs = null,
+    IFileDialogs? FileDialogs = null,
+    ILocalFileOperations? LocalFiles = null)
 {
     /// <summary>接続先の一覧のファイル。</summary>
     public string ConnectionsFile => Path.Combine(DataDirectory, "connections.json");
@@ -101,9 +107,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         DuplicateConnectionCommand = new AsyncRelayCommand<ConnectionItemViewModel>(DuplicateConnectionAsync);
         DeleteConnectionCommand = new AsyncRelayCommand<ConnectionItemViewModel>(DeleteConnectionAsync);
         UploadCommand = new AsyncRelayCommand(() => UploadEntriesAsync([.. Local.SelectedRows.Select(row => row.Entry)]), () => CanUpload);
-        DownloadCommand = new AsyncRelayCommand(DownloadSelectedAsync, () => CanDownload);
+        DownloadCommand = new AsyncRelayCommand(() => DownloadEntriesAsync([.. Remote.SelectedRows.Select(row => row.Entry)]), () => CanDownload);
+        NewFolderCommand = new AsyncRelayCommand(() => NewFolderAsync(ActivePane), () => CanCreateFolder(ActivePane));
+        RenameCommand = new AsyncRelayCommand(() => RenameAsync(ActivePane), () => CanRename(ActivePane));
+        DeleteCommand = new AsyncRelayCommand(() => DeleteAsync(ActivePane), () => CanDelete(ActivePane));
+        ChangePermissionsCommand = new AsyncRelayCommand(() => ChangePermissionsAsync(Remote), () => CanChangePermissions);
         local.PropertyChanged += OnPanePropertyChanged;
         remote.PropertyChanged += OnPanePropertyChanged;
+        local.ActionRequested += OnPaneActionRequested;
+        remote.ActionRequested += OnPaneActionRequested;
+        // ドラッグ＆ドロップ: パソコン側からサーバー側へ落とすとアップロード、その逆はダウンロード
+        remote.RowsDropped += (_, e) => _ = UploadEntriesAsync([.. e.Rows.Select(row => row.Entry)]);
+        remote.FilesDropped += (_, paths) => _ = UploadAsync(paths);
+        local.RowsDropped += (_, e) => _ = DownloadEntriesAsync([.. e.Rows.Select(row => row.Entry)]);
 
         // 接続先がまだ無いときは、サーバー側の案内で作り方を教える
         connections.PropertyChanged += (_, e) =>
@@ -140,6 +156,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
                 return;
             previous.IsActive = false;
             value.IsActive = true;
+            NotifyTransferCommands();
         }
     }
 
@@ -196,6 +213,21 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>選んだファイルをパソコンへ受け取る（Ctrl+D）。</summary>
     public IAsyncRelayCommand DownloadCommand { get; }
+
+    /// <summary>操作の対象の側に、新しいフォルダを作る（Ctrl+K）。</summary>
+    public IAsyncRelayCommand NewFolderCommand { get; }
+
+    /// <summary>選んだものの名前を変える（F2、Ctrl+N）。</summary>
+    public IAsyncRelayCommand RenameCommand { get; }
+
+    /// <summary>選んだものを消す（Delete）。パソコン側はごみ箱へ移す。</summary>
+    public IAsyncRelayCommand DeleteCommand { get; }
+
+    /// <summary>サーバー側で選んだものの属性を変える（Ctrl+T）。</summary>
+    public IAsyncRelayCommand ChangePermissionsCommand { get; }
+
+    /// <summary>サーバー側で選んだものの属性を変えられるか。</summary>
+    public bool CanChangePermissions => _session is not null && Remote.HasLoaded && Remote.SelectedRows.Count > 0 && _services?.FileDialogs is not null;
 
     /// <summary>アップロードできるか（接続していて、パソコン側で何か選んでいる）。</summary>
     public bool CanUpload =>
@@ -505,11 +537,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         return Enqueue(controller, plan, Local);
     }
 
-    private async Task DownloadSelectedAsync()
+    private async Task DownloadEntriesAsync(IReadOnlyList<FileEntry> entries)
     {
-        if (_transferController is not { } controller || Remote.Source is not { } remote || !CanDownload)
+        if (_transferController is not { } controller || Remote.Source is not { } remote
+            || !Local.HasLoaded || Local.CurrentPath.Length == 0 || entries.Count == 0)
             return;
-        var targets = Remote.SelectedRows.Select(row => row.Entry).ToList();
+        var targets = entries.Where(entry => entry.Type != FileEntryType.Drive).ToList();
         var localFolder = Local.CurrentPath;
         var conflicts = targets.Where(entry => Local.HasItemNamed(TransferPlanner.ToLocalName(entry.Name))).Select(entry => entry.Name).ToList();
         if (await ChooseConflictPolicyAsync(TransferDirection.Download, conflicts).ConfigureAwait(true) is not { } policy)
@@ -569,6 +602,198 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         UploadCommand.NotifyCanExecuteChanged();
         DownloadCommand.NotifyCanExecuteChanged();
+        NewFolderCommand.NotifyCanExecuteChanged();
+        RenameCommand.NotifyCanExecuteChanged();
+        DeleteCommand.NotifyCanExecuteChanged();
+        ChangePermissionsCommand.NotifyCanExecuteChanged();
+    }
+
+    private void OnPaneActionRequested(object? sender, PaneAction action)
+    {
+        if (sender is not FilePaneViewModel pane)
+            return;
+        ActivePane = pane;
+        _ = action switch
+        {
+            PaneAction.Transfer when pane.Kind == PaneKind.Local => UploadEntriesAsync([.. pane.SelectedRows.Select(row => row.Entry)]),
+            PaneAction.Transfer => DownloadEntriesAsync([.. pane.SelectedRows.Select(row => row.Entry)]),
+            PaneAction.NewFolder when CanCreateFolder(pane) => NewFolderAsync(pane),
+            PaneAction.Rename when CanRename(pane) => RenameAsync(pane),
+            PaneAction.Delete when CanDelete(pane) => DeleteAsync(pane),
+            PaneAction.ChangePermissions when pane.Kind == PaneKind.Remote && CanChangePermissions => ChangePermissionsAsync(pane),
+            _ => Task.CompletedTask,
+        };
+    }
+
+    // ---- 新しいフォルダ・名前の変更・削除・属性の変更 ----
+
+    private ILocalFileOperations LocalFiles => _services?.LocalFiles ?? LocalFileOperations.Instance;
+
+    private bool CanCreateFolder(FilePaneViewModel pane) =>
+        _services?.FileDialogs is not null && pane.HasLoaded
+        && (pane.Kind == PaneKind.Local ? pane.CurrentPath.Length > 0 : _session is not null);
+
+    private bool CanRename(FilePaneViewModel pane) =>
+        CanCreateFolder(pane) && pane.SelectedRows.Count == 1 && pane.SelectedRows[0].Entry.Type != FileEntryType.Drive;
+
+    private bool CanDelete(FilePaneViewModel pane) =>
+        CanCreateFolder(pane) && pane.SelectedRows.Count > 0 && pane.SelectedRows.All(row => row.Entry.Type != FileEntryType.Drive);
+
+    private string CombineIn(FilePaneViewModel pane, string name) =>
+        pane.Kind == PaneKind.Local ? Path.Combine(pane.CurrentPath, name) : RemotePath.Combine(pane.CurrentPath, name);
+
+    // サーバーの操作は画面用の接続で行う（つなぎ直すときに鍵を聞くことがあるので、画面のスレッドでは動かさない）
+    private Task OnServerAsync(Func<RemoteBrowser, Task> operation)
+    {
+        var browser = _session?.Browser ?? throw new InvalidOperationException("接続していません。");
+        return Task.Run(() => operation(browser));
+    }
+
+    private async Task NewFolderAsync(FilePaneViewModel pane)
+    {
+        if (_services?.FileDialogs is not { } dialogs || !CanCreateFolder(pane))
+            return;
+        var initial = "新しいフォルダ";
+        for (var i = 2; pane.HasItemNamed(initial); i++)
+            initial = $"新しいフォルダ ({i})";
+        var name = await dialogs.AskNameAsync("新しいフォルダ", initial, "作成", text =>
+            FileNames.Validate(text, pane.Kind) ?? (pane.HasItemNamed(text.Trim()) ? "同じ名前のものがあります" : null)).ConfigureAwait(true);
+        if (name is null)
+            return;
+        name = name.Trim();
+        var path = CombineIn(pane, name);
+        try
+        {
+            if (pane.Kind == PaneKind.Local)
+                await Task.Run(() => LocalFiles.CreateDirectory(path)).ConfigureAwait(true);
+            else
+                await OnServerAsync(browser => browser.CreateDirectoryAsync(path, CancellationToken.None)).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            pane.ShowNotice("フォルダを作れませんでした", DisplayText.Describe(FailureClassifier.FromException(ex)), name);
+            return;
+        }
+        await pane.RefreshAsync(name).ConfigureAwait(true);
+    }
+
+    private async Task RenameAsync(FilePaneViewModel pane)
+    {
+        if (_services?.FileDialogs is not { } dialogs || !CanRename(pane))
+            return;
+        var row = pane.SelectedRows[0];
+        var oldName = row.Name;
+        var comparison = pane.Kind == PaneKind.Local ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var name = await dialogs.AskNameAsync("名前の変更", oldName, "変更", text =>
+        {
+            var trimmed = text.Trim();
+            if (string.Equals(trimmed, oldName, StringComparison.Ordinal))
+                return null;
+            // 大文字と小文字だけの違いは、パソコン側でも変えられる
+            var conflict = pane.HasItemNamed(trimmed) && !string.Equals(trimmed, oldName, comparison);
+            return FileNames.Validate(trimmed, pane.Kind) ?? (conflict ? "同じ名前のものがあります" : null);
+        }).ConfigureAwait(true);
+        if (name is null || string.Equals(name.Trim(), oldName, StringComparison.Ordinal))
+            return;
+        name = name.Trim();
+        var from = row.Entry.FullPath;
+        var to = CombineIn(pane, name);
+        try
+        {
+            if (pane.Kind == PaneKind.Local)
+                await Task.Run(() => LocalFiles.Rename(from, to)).ConfigureAwait(true);
+            else
+                await OnServerAsync(browser => browser.RenameAsync(from, to, CancellationToken.None)).ConfigureAwait(true);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            pane.ShowNotice("名前を変えられませんでした", DisplayText.Describe(FailureClassifier.FromException(ex)), oldName);
+            return;
+        }
+        await pane.RefreshAsync(name).ConfigureAwait(true);
+    }
+
+    private async Task DeleteAsync(FilePaneViewModel pane)
+    {
+        if (_services?.FileDialogs is not { } dialogs || !CanDelete(pane))
+            return;
+        var rows = pane.SelectedRows.ToList();
+        var remote = pane.Kind == PaneKind.Remote;
+        if (!await dialogs.ConfirmDeleteAsync([.. rows.Select(row => row.Name)], remote, !remote && LocalFiles.UsesRecycleBin).ConfigureAwait(true))
+            return;
+
+        var failed = new List<string>();
+        TransferFailure? firstFailure = null;
+        if (remote)
+        {
+            // 1 つ失敗しても、ほかは消す
+            foreach (var row in rows)
+            {
+                try
+                {
+                    var path = row.Entry.FullPath;
+                    if (row.Entry.Type == FileEntryType.Directory)
+                        await OnServerAsync(browser => browser.DeleteDirectoryAsync(path, CancellationToken.None)).ConfigureAwait(true);
+                    else
+                        await OnServerAsync(browser => browser.DeleteFileAsync(path, CancellationToken.None)).ConfigureAwait(true);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    failed.Add(row.Name);
+                    firstFailure ??= FailureClassifier.FromException(ex);
+                }
+            }
+        }
+        else
+        {
+            try
+            {
+                await Task.Run(() => LocalFiles.Delete([.. rows.Select(row => row.Entry.FullPath)])).ConfigureAwait(true);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                failed.AddRange(rows.Select(row => row.Name));
+                firstFailure = FailureClassifier.FromException(ex);
+            }
+        }
+
+        await pane.RefreshAsync().ConfigureAwait(true);
+        if (firstFailure is not null)
+        {
+            pane.ShowNotice(
+                failed.Count == rows.Count ? "削除できませんでした" : "一部を削除できませんでした",
+                DisplayText.Describe(firstFailure),
+                string.Join("、", failed.Take(3)) + (failed.Count > 3 ? " ほか" : ""));
+        }
+    }
+
+    private async Task ChangePermissionsAsync(FilePaneViewModel pane)
+    {
+        if (_services?.FileDialogs is not { } dialogs || !CanChangePermissions)
+            return;
+        var rows = pane.SelectedRows.ToList();
+        var current = rows.Count == 1 ? UnixMode.FromText(rows[0].Entry.Permissions) : null;
+        if (await dialogs.AskPermissionsAsync([.. rows.Select(row => row.Name)], current).ConfigureAwait(true) is not { } mode)
+            return;
+
+        TransferFailure? firstFailure = null;
+        var failed = new List<string>();
+        foreach (var row in rows)
+        {
+            try
+            {
+                var path = row.Entry.FullPath;
+                await OnServerAsync(browser => browser.SetPermissionsAsync(path, mode, CancellationToken.None)).ConfigureAwait(true);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                failed.Add(row.Name);
+                firstFailure ??= FailureClassifier.FromException(ex);
+            }
+        }
+        await pane.RefreshAsync().ConfigureAwait(true);
+        if (firstFailure is not null)
+            pane.ShowNotice("属性を変えられませんでした", DisplayText.Describe(firstFailure), string.Join("、", failed.Take(3)));
     }
 
     // 送り終わったファイルが、開いているフォルダの中なら、一覧を取り直す（FFFTP のように一覧が消えたりはしない）

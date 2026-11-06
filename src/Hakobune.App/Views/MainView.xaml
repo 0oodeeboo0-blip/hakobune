@@ -180,19 +180,28 @@
                     </StackPanel>
                 </Button>
                 <Rectangle Style="{StaticResource ToolbarSeparatorStyle}" />
-                <Button Style="{StaticResource ToolbarButtonStyle}">
+                <Button
+                    Command="{x:Bind ViewModel.NewFolderCommand}"
+                    Style="{StaticResource ToolbarButtonStyle}"
+                    ToolTipService.ToolTip="選んでいる側に新しいフォルダを作る (Ctrl+K)">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon FontSize="16" Glyph="&#xE8F4;" />
                         <TextBlock Text="新しいフォルダ" />
                     </StackPanel>
                 </Button>
-                <Button Style="{StaticResource ToolbarButtonStyle}">
+                <Button
+                    Command="{x:Bind ViewModel.RenameCommand}"
+                    Style="{StaticResource ToolbarButtonStyle}"
+                    ToolTipService.ToolTip="名前を変える (F2)">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon FontSize="16" Glyph="&#xE8AC;" />
                         <TextBlock Text="名前の変更" />
                     </StackPanel>
                 </Button>
-                <Button Style="{StaticResource ToolbarButtonStyle}">
+                <Button
+                    Command="{x:Bind ViewModel.DeleteCommand}"
+                    Style="{StaticResource ToolbarButtonStyle}"
+                    ToolTipService.ToolTip="削除する (Delete)。パソコン側はごみ箱へ移す">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon FontSize="16" Glyph="&#xE74D;" />
                         <TextBlock Text="削除" />
@@ -246,6 +255,16 @@
                                     <FontIcon Glyph="&#xE703;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem
+                                Command="{x:Bind ViewModel.ChangePermissionsCommand}"
+                                KeyboardAcceleratorTextOverride="Ctrl+T"
+                                Text="属性の変更…">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE8D7;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
                             <MenuFlyoutItem Command="{x:Bind ViewModel.DisconnectCommand}" Text="切断">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE8CD;" />

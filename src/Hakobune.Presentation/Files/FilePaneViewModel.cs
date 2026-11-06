@@ -16,6 +16,25 @@ public enum PaneKind
     Remote,
 }
 
+/// <summary>一覧の上でキーを押して頼む操作。</summary>
+public enum PaneAction
+{
+    /// <summary>選んだものを、もう一方へ送る（パソコン側ならアップロード、サーバー側ならダウンロード）。</summary>
+    Transfer,
+
+    /// <summary>新しいフォルダ。</summary>
+    NewFolder,
+
+    /// <summary>名前の変更。</summary>
+    Rename,
+
+    /// <summary>削除。</summary>
+    Delete,
+
+    /// <summary>属性の変更（サーバー側だけ）。</summary>
+    ChangePermissions,
+}
+
 /// <summary>
 /// 一覧 1 つ分（パソコン側またはサーバー側）。
 /// </summary>
@@ -342,6 +361,38 @@ public sealed class FilePaneViewModel : ObservableObject
     /// <summary>今のフォルダを取り直す。失敗しても今の一覧は消さない。</summary>
     public Task RefreshAsync() => HasSource && _hasLoaded ? LoadAsync(CurrentPath, focusName: null) : RetryAsync();
 
+    /// <summary>今のフォルダを取り直し、その名前の行を選ぶ（作った・名前を変えたものを見せる）。</summary>
+    public Task RefreshAsync(string focusName)
+    {
+        ArgumentNullException.ThrowIfNull(focusName);
+        return HasSource && _hasLoaded ? LoadAsync(CurrentPath, focusName) : RetryAsync();
+    }
+
+    /// <summary>
+    /// ファイルが落とされた（エクスプローラーから、パスで）。落とされた側が受け取り、どうするかは <see cref="FilesDropped"/> を見る側が決める。
+    /// </summary>
+    public void DropFiles(IReadOnlyList<string> paths)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        if (paths.Count > 0)
+            FilesDropped?.Invoke(this, paths);
+    }
+
+    /// <summary>もう一方の一覧の行が落とされた。</summary>
+    public void DropRows(FilePaneViewModel from, IReadOnlyList<FileRowViewModel> rows)
+    {
+        ArgumentNullException.ThrowIfNull(from);
+        ArgumentNullException.ThrowIfNull(rows);
+        if (!ReferenceEquals(from, this) && rows.Count > 0)
+            RowsDropped?.Invoke(this, new RowsDroppedEventArgs(from, rows));
+    }
+
+    /// <summary>エクスプローラーからファイルが落とされた。</summary>
+    public event EventHandler<IReadOnlyList<string>>? FilesDropped;
+
+    /// <summary>もう一方の一覧の行が落とされた。</summary>
+    public event EventHandler<RowsDroppedEventArgs>? RowsDropped;
+
     /// <summary>行を開く（フォルダなら中へ移る）。</summary>
     public Task OpenAsync(FileRowViewModel? row) =>
         row is { IsDirectory: true } ? LoadAsync(row.Entry.FullPath, focusName: null) : Task.CompletedTask;
@@ -367,6 +418,12 @@ public sealed class FilePaneViewModel : ObservableObject
 
     /// <summary>画面でこちら側に触れたことを知らせる。</summary>
     public void Activate() => ActivationRequested?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>キーで操作を頼む（実際の操作はメイン画面が行う）。</summary>
+    public void RequestAction(PaneAction action) => ActionRequested?.Invoke(this, action);
+
+    /// <summary>キーで操作を頼まれた。</summary>
+    public event EventHandler<PaneAction>? ActionRequested;
 
     /// <summary>画面で選んでいる数を知らせる。</summary>
     public void UpdateSelection(int selectedCount) => SelectedCount = Math.Max(0, selectedCount);
@@ -625,3 +682,8 @@ public sealed class FilePaneViewModel : ObservableObject
     private static bool PathEquals(string a, string b) =>
         string.Equals(a.TrimEnd('/', '\\'), b.TrimEnd('/', '\\'), StringComparison.Ordinal);
 }
+
+/// <summary>一覧の行が、もう一方の一覧へ落とされた。</summary>
+/// <param name="From">行を持ってきた一覧。</param>
+/// <param name="Rows">落とされた行。</param>
+public sealed record RowsDroppedEventArgs(FilePaneViewModel From, IReadOnlyList<FileRowViewModel> Rows);

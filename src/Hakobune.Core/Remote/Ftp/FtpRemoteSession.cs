@@ -206,6 +206,14 @@ public sealed class FtpRemoteSession : IRemoteSession
     public Task RenameAsync(string fromPath, string toPath, CancellationToken cancellationToken) =>
         RunAsync(client => client.Rename(fromPath, toPath, cancellationToken), cancellationToken);
 
+    // FluentFTP は中身を消してからフォルダを消す
+    public Task DeleteDirectoryAsync(string path, CancellationToken cancellationToken) =>
+        RunAsync(client => client.DeleteDirectory(path, cancellationToken), cancellationToken);
+
+    // SITE CHMOD 644 のように、8 進の数字をそのまま送る
+    public Task SetPermissionsAsync(string path, int mode, CancellationToken cancellationToken) =>
+        RunAsync(client => client.SetFilePermissions(path, UnixMode.ToOctalDigits(mode), cancellationToken), cancellationToken);
+
     public Task SetModifiedTimeAsync(string path, DateTimeOffset modified, CancellationToken cancellationToken) =>
         RunAsync(client => client.SetModifiedTime(path, modified.UtcDateTime, cancellationToken), cancellationToken);
 

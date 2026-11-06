@@ -8,6 +8,9 @@
 
     <Grid
         Height="{x:Bind helpers:Ui.TransferPanelHeight(ViewModel.IsExpanded), Mode=OneWay}"
+        AllowDrop="True"
+        DragOver="OnDragOver"
+        Drop="OnDrop"
         Background="{ThemeResource LayerFillColorDefaultBrush}"
         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
         BorderThickness="1"

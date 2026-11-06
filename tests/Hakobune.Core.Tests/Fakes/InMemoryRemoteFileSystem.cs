@@ -9,6 +9,7 @@ internal sealed class InMemoryRemoteFileSystem
     private readonly object _gate = new();
     private readonly Dictionary<string, (byte[] Data, DateTimeOffset Modified)> _files = new(StringComparer.Ordinal);
     private readonly HashSet<string> _directories = new(StringComparer.Ordinal) { "/" };
+    private readonly Dictionary<string, int> _modes = new(StringComparer.Ordinal);
 
     public int FileCount
     {
@@ -121,11 +122,61 @@ internal sealed class InMemoryRemoteFileSystem
         lock (_gate)
         {
             var from = Normalize(fromPath);
-            if (!_files.Remove(from, out var entry))
+            var to = Normalize(toPath);
+            if (_files.Remove(from, out var entry))
+            {
+                _files[to] = entry;
+                return;
+            }
+            if (!_directories.Contains(from) || from == "/")
                 throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.NotFound, fromPath));
-            _files[Normalize(toPath)] = entry;
+
+            // フォルダは中身ごと移す
+            foreach (var directory in _directories.Where(path => IsSelfOrInside(path, from)).ToList())
+            {
+                _directories.Remove(directory);
+                _directories.Add(to + directory[from.Length..]);
+            }
+            foreach (var file in _files.Keys.Where(path => IsSelfOrInside(path, from)).ToList())
+            {
+                _files.Remove(file, out var moved);
+                _files[to + file[from.Length..]] = moved;
+            }
         }
     }
+
+    public void DeleteDirectory(string path)
+    {
+        lock (_gate)
+        {
+            var directory = Normalize(path);
+            if (!_directories.Contains(directory) || directory == "/")
+                throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.NotFound, path));
+            _directories.RemoveWhere(item => IsSelfOrInside(item, directory));
+            foreach (var file in _files.Keys.Where(item => IsSelfOrInside(item, directory)).ToList())
+                _files.Remove(file);
+        }
+    }
+
+    public void SetMode(string path, int mode)
+    {
+        lock (_gate)
+        {
+            var normalized = Normalize(path);
+            if (!_files.ContainsKey(normalized) && !_directories.Contains(normalized))
+                throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.NotFound, path));
+            _modes[normalized] = mode;
+        }
+    }
+
+    public int? GetMode(string path)
+    {
+        lock (_gate)
+            return _modes.TryGetValue(Normalize(path), out var mode) ? mode : null;
+    }
+
+    private static bool IsSelfOrInside(string path, string directory) =>
+        path == directory || path.StartsWith(directory + "/", StringComparison.Ordinal);
 
     private static string Normalize(string path) => path.Length > 1 ? path.TrimEnd('/') : path;
 }

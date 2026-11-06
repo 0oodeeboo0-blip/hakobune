@@ -1,6 +1,7 @@
 using Hakobune.Presentation.Transfers;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace Hakobune.App.Views;
 
@@ -34,6 +35,40 @@ public sealed partial class TransferPanelView : UserControl
     }
 
     private static TransferRowViewModel? RowOf(object sender) => (sender as FrameworkElement)?.DataContext as TransferRowViewModel;
+
+    /// <summary>エクスプローラーからファイルが落とされた（サーバーへ送る）。</summary>
+    public event EventHandler<IReadOnlyList<string>>? FilesDropped;
+
+    private void OnDragOver(object sender, DragEventArgs e)
+    {
+        if (e.DataView.Contains(StandardDataFormats.StorageItems))
+        {
+            e.AcceptedOperation = DataPackageOperation.Copy;
+            e.DragUIOverride.Caption = "サーバーへアップロード";
+        }
+    }
+
+    private async void OnDrop(object sender, DragEventArgs e)
+    {
+        if (!e.DataView.Contains(StandardDataFormats.StorageItems))
+            return;
+        var deferral = e.GetDeferral();
+        try
+        {
+            var items = await e.DataView.GetStorageItemsAsync();
+            var paths = items.Select(item => item.Path).Where(path => !string.IsNullOrEmpty(path)).ToList();
+            if (paths.Count > 0)
+                FilesDropped?.Invoke(this, paths);
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or UnauthorizedAccessException)
+        {
+            CrashReport.Write(ex);
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
 
     private void OnCancelClick(object sender, RoutedEventArgs e)
     {

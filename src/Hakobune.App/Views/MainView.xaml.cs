@@ -19,6 +19,7 @@ public sealed partial class MainView : UserControl
         LocalPane.ViewModel = viewModel.Local;
         RemotePane.ViewModel = viewModel.Remote;
         TransferPanel.ViewModel = viewModel.Transfers;
+        TransferPanel.FilesDropped += OnTransferPanelFilesDropped;
     }
 
     public MainViewModel ViewModel { get; }
@@ -52,6 +53,10 @@ public sealed partial class MainView : UserControl
         if (ViewModel.DownloadCommand.CanExecute(null))
             await ViewModel.DownloadCommand.ExecuteAsync(null);
     }
+
+    // 転送の一覧にファイルを落としたら、サーバーのいまのフォルダへ送る
+    private async void OnTransferPanelFilesDropped(object? sender, IReadOnlyList<string> paths) =>
+        await ViewModel.UploadAsync(paths);
 
     // 接続先をクリックすると接続する（接続中のものなら何もしない）
     private async void OnConnectionClick(object sender, RoutedEventArgs e)

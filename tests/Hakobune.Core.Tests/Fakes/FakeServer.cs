@@ -213,6 +213,20 @@ internal sealed class FakeRemoteSession(FakeServer server) : IRemoteSession
         return Task.CompletedTask;
     }
 
+    public Task DeleteDirectoryAsync(string path, CancellationToken cancellationToken)
+    {
+        EnsureConnected();
+        server.Files.DeleteDirectory(path);
+        return Task.CompletedTask;
+    }
+
+    public Task SetPermissionsAsync(string path, int mode, CancellationToken cancellationToken)
+    {
+        EnsureConnected();
+        server.Files.SetMode(path, mode);
+        return Task.CompletedTask;
+    }
+
     public Task SetModifiedTimeAsync(string path, DateTimeOffset modified, CancellationToken cancellationToken)
     {
         EnsureConnected();

@@ -3,6 +3,7 @@ using Hakobune.Presentation.Files;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.System;
 
 namespace Hakobune.App.Views;
@@ -80,6 +81,102 @@ public sealed partial class FilePaneView : UserControl
                 e.Handled = true;
                 await viewModel.GoUpCommand.ExecuteAsync(null);
                 break;
+            case VirtualKey.Delete:
+                e.Handled = true;
+                viewModel.RequestAction(PaneAction.Delete);
+                break;
+            case VirtualKey.F2:
+                e.Handled = true;
+                viewModel.RequestAction(PaneAction.Rename);
+                break;
+        }
+    }
+
+    private void OnNewFolderInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        ViewModel?.RequestAction(PaneAction.NewFolder);
+    }
+
+    private void OnRenameInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        ViewModel?.RequestAction(PaneAction.Rename);
+    }
+
+    private void OnPermissionsInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        ViewModel?.RequestAction(PaneAction.ChangePermissions);
+    }
+
+    // ---- ドラッグ＆ドロップ ----
+
+    // 同じアプリの中で、どちらの一覧のどの行をドラッグしているか
+    private static (FilePaneViewModel Pane, IReadOnlyList<FileRowViewModel> Rows)? s_dragging;
+
+    private const string DragFormat = "Hakobune.Rows";
+
+    private void OnDragItemsStarting(object sender, DragItemsStartingEventArgs e)
+    {
+        if (ViewModel is not { } viewModel)
+            return;
+        var rows = e.Items.OfType<FileRowViewModel>().Where(row => !row.IsDrive).ToList();
+        if (rows.Count == 0)
+        {
+            e.Cancel = true;
+            return;
+        }
+        s_dragging = (viewModel, rows);
+        e.Data.SetData(DragFormat, viewModel.Kind.ToString());
+        e.Data.RequestedOperation = DataPackageOperation.Copy;
+    }
+
+    private void OnDragOver(object sender, DragEventArgs e)
+    {
+        if (ViewModel is not { } viewModel)
+            return;
+        if (e.DataView.Contains(DragFormat) && s_dragging is { } dragging && !ReferenceEquals(dragging.Pane, viewModel))
+        {
+            e.AcceptedOperation = DataPackageOperation.Copy;
+            e.DragUIOverride.Caption = viewModel.Kind == PaneKind.Remote ? "サーバーへアップロード" : "パソコンへダウンロード";
+        }
+        else if (viewModel.Kind == PaneKind.Remote && e.DataView.Contains(StandardDataFormats.StorageItems))
+        {
+            e.AcceptedOperation = DataPackageOperation.Copy;
+            e.DragUIOverride.Caption = "サーバーへアップロード";
+        }
+        else
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+        }
+    }
+
+    private async void OnDrop(object sender, DragEventArgs e)
+    {
+        if (ViewModel is not { } viewModel)
+            return;
+        if (e.DataView.Contains(DragFormat) && s_dragging is { } dragging)
+        {
+            s_dragging = null;
+            viewModel.DropRows(dragging.Pane, dragging.Rows);
+            return;
+        }
+        if (viewModel.Kind != PaneKind.Remote || !e.DataView.Contains(StandardDataFormats.StorageItems))
+            return;
+        var deferral = e.GetDeferral();
+        try
+        {
+            var items = await e.DataView.GetStorageItemsAsync();
+            viewModel.DropFiles([.. items.Select(item => item.Path).Where(path => !string.IsNullOrEmpty(path))]);
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or UnauthorizedAccessException)
+        {
+            CrashReport.Write(ex);
+        }
+        finally
+        {
+            deferral.Complete();
         }
     }
 

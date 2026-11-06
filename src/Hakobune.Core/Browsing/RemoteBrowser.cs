@@ -116,6 +116,22 @@ public sealed class RemoteBrowser : IAsyncDisposable
             return true;
         }, cancellationToken);
 
+    /// <summary>フォルダを中身ごと削除する。</summary>
+    public Task DeleteDirectoryAsync(string path, CancellationToken cancellationToken) =>
+        RunAsync(async session =>
+        {
+            await session.DeleteDirectoryAsync(path, cancellationToken).ConfigureAwait(false);
+            return true;
+        }, cancellationToken);
+
+    /// <summary>属性（パーミッション）を変える。</summary>
+    public Task SetPermissionsAsync(string path, int mode, CancellationToken cancellationToken) =>
+        RunAsync(async session =>
+        {
+            await session.SetPermissionsAsync(path, mode, cancellationToken).ConfigureAwait(false);
+            return true;
+        }, cancellationToken);
+
     /// <summary>
     /// 何もしていない間に呼ぶ。接続が生きていれば true。切れていたら捨てて、次の操作でつなぎ直す。
     /// まだ接続していなければ何もしない。

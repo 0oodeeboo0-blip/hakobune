@@ -17,6 +17,19 @@
             Invoked="OnGoUpInvoked"
             Modifiers="Menu" />
         <KeyboardAccelerator Key="F5" Invoked="OnRefreshInvoked" />
+        <!--  FFFTP と同じ: Ctrl+K で新しいフォルダ、Ctrl+N で名前の変更、Ctrl+T で属性の変更  -->
+        <KeyboardAccelerator
+            Key="K"
+            Invoked="OnNewFolderInvoked"
+            Modifiers="Control" />
+        <KeyboardAccelerator
+            Key="N"
+            Invoked="OnRenameInvoked"
+            Modifiers="Control" />
+        <KeyboardAccelerator
+            Key="T"
+            Invoked="OnPermissionsInvoked"
+            Modifiers="Control" />
     </UserControl.KeyboardAccelerators>
 
     <UserControl.Resources>
@@ -172,10 +185,13 @@
     </UserControl.Resources>
 
     <Grid
+        AllowDrop="True"
         Background="{ThemeResource LayerFillColorDefaultBrush}"
         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
         BorderThickness="1"
-        CornerRadius="{StaticResource OverlayCornerRadius}">
+        CornerRadius="{StaticResource OverlayCornerRadius}"
+        DragOver="OnDragOver"
+        Drop="OnDrop">
         <Grid.RowDefinitions>
             <RowDefinition Height="44" />
             <RowDefinition Height="40" />
@@ -454,7 +470,9 @@
             x:Name="FileList"
             Grid.Row="4"
             Padding="0,4"
+            CanDragItems="True"
             DoubleTapped="OnListDoubleTapped"
+            DragItemsStarting="OnDragItemsStarting"
             ItemContainerStyle="{StaticResource FileRowContainerStyle}"
             ItemTemplate="{StaticResource FileRowTemplate}"
             ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"

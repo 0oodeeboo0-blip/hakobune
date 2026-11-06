@@ -3,10 +3,13 @@ using System.Globalization;
 using Hakobune.App.Views;
 using Hakobune.Core.Connections;
 using Hakobune.Core.Transfers;
+using Hakobune.Core.Remote;
 using Hakobune.Presentation.Connections;
+using Hakobune.Presentation.Files;
 using Hakobune.Presentation.Transfers;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 
@@ -16,7 +19,7 @@ namespace Hakobune.App.Services;
 /// 接続のときの質問（パスワード、サーバーの鍵、証明書）と、接続先の作成・編集を、ダイアログで聞く。
 /// どのスレッドから呼んでもよい（画面のスレッドに頼んで出す）。
 /// </summary>
-internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, ITransferDialogs
+internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, ITransferDialogs, IFileDialogs
 {
     private readonly DispatcherQueue _dispatcher;
     private readonly Func<XamlRoot?> _xamlRoot;
@@ -274,6 +277,157 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
             };
             return await ShowAsync(dialog).ConfigureAwait(true) == ContentDialogResult.Primary;
         });
+
+    public Task<string?> AskNameAsync(string title, string initialName, string primaryButtonText, Func<string, string?> validate) =>
+        OnUiThreadAsync<string?>(async () =>
+        {
+            var box = new TextBox { Text = initialName, MinWidth = 360, IsSpellCheckEnabled = false };
+            var problem = new TextBlock
+            {
+                FontSize = 12,
+                Foreground = Brush("SystemFillColorCriticalBrush"),
+                TextWrapping = TextWrapping.Wrap,
+                Visibility = Visibility.Collapsed,
+            };
+            var panel = new StackPanel { Spacing = 8 };
+            panel.Children.Add(box);
+            panel.Children.Add(problem);
+
+            var dialog = new ContentDialog
+            {
+                Title = title,
+                Content = panel,
+                PrimaryButtonText = primaryButtonText,
+                CloseButtonText = "やめる",
+                DefaultButton = ContentDialogButton.Primary,
+            };
+            void Check()
+            {
+                var message = validate(box.Text);
+                problem.Text = message ?? "";
+                problem.Visibility = message is null ? Visibility.Collapsed : Visibility.Visible;
+                dialog.IsPrimaryButtonEnabled = message is null;
+            }
+            box.TextChanged += (_, _) => Check();
+            box.Loaded += (_, _) =>
+            {
+                box.Focus(FocusState.Programmatic);
+                // 拡張子の前までを選んでおく（エクスプローラーと同じ）
+                var dot = initialName.LastIndexOf('.');
+                box.Select(0, dot > 0 ? dot : initialName.Length);
+            };
+            Check();
+            return await ShowAsync(dialog).ConfigureAwait(true) == ContentDialogResult.Primary ? box.Text : null;
+        });
+
+    public Task<bool> ConfirmDeleteAsync(IReadOnlyList<string> names, bool remote, bool recycleBin) =>
+        OnUiThreadAsync(async () =>
+        {
+            var what = names.Count == 1
+                ? $"「{names[0]}」"
+                : $"{names.Count.ToString("N0", CultureInfo.CurrentCulture)} 個の項目（{string.Join("、", names.Take(3))}{(names.Count > 3 ? " ほか" : "")}）";
+            var panel = new StackPanel { Spacing = 8, MaxWidth = 460 };
+            panel.Children.Add(Paragraph($"{what}を削除しますか？"));
+            if (remote)
+                panel.Children.Add(Warning("サーバーから消したものは、元に戻せません。フォルダは中身ごと消えます。"));
+            else
+                panel.Children.Add(Paragraph(recycleBin ? "ごみ箱に移します。" : "元に戻せません。"));
+
+            var dialog = new ContentDialog
+            {
+                Title = "削除の確認",
+                Content = panel,
+                PrimaryButtonText = "削除",
+                CloseButtonText = "やめる",
+                // 元に戻せないときは、うっかり Enter で消さないようにする
+                DefaultButton = remote || !recycleBin ? ContentDialogButton.Close : ContentDialogButton.Primary,
+            };
+            return await ShowAsync(dialog).ConfigureAwait(true) == ContentDialogResult.Primary;
+        });
+
+    public Task<int?> AskPermissionsAsync(IReadOnlyList<string> names, int? currentMode) =>
+        OnUiThreadAsync<int?>(async () =>
+        {
+            var mode = currentMode ?? Convert.ToInt32("644", 8);
+            var panel = new StackPanel { Spacing = 12, MinWidth = 360 };
+            panel.Children.Add(Paragraph(names.Count == 1
+                ? $"「{names[0]}」の属性"
+                : $"{names.Count.ToString("N0", CultureInfo.CurrentCulture)} 個の項目の属性（すべて同じにします）"));
+
+            // 所有者・グループ・その他 × 読み・書き・実行
+            var grid = new Grid { ColumnSpacing = 16, RowSpacing = 4 };
+            for (var i = 0; i < 4; i++)
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            for (var i = 0; i < 4; i++)
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            string[] who = ["所有者", "グループ", "その他"];
+            string[] what = ["読み", "書き", "実行"];
+            for (var c = 0; c < 3; c++)
+                AddCell(grid, new TextBlock { Text = what[c], Foreground = Brush("TextFillColorSecondaryBrush") }, 0, c + 1);
+            var boxes = new CheckBox[9];
+            for (var r = 0; r < 3; r++)
+            {
+                AddCell(grid, new TextBlock { Text = who[r], VerticalAlignment = VerticalAlignment.Center }, r + 1, 0);
+                for (var c = 0; c < 3; c++)
+                {
+                    var bit = 8 - (r * 3 + c);
+                    var box = new CheckBox { MinWidth = 0, IsChecked = (mode & (1 << bit)) != 0 };
+                    AutomationProperties.SetName(box, $"{who[r]}の{what[c]}");
+                    boxes[r * 3 + c] = box;
+                    AddCell(grid, box, r + 1, c + 1);
+                }
+            }
+            panel.Children.Add(grid);
+            var octal = new TextBox { Header = "数字で（例: 644、755）", Text = UnixMode.Format(mode), Width = 160, HorizontalAlignment = HorizontalAlignment.Left };
+            panel.Children.Add(octal);
+
+            var dialog = new ContentDialog
+            {
+                Title = "属性の変更",
+                Content = panel,
+                PrimaryButtonText = "変更",
+                CloseButtonText = "やめる",
+                DefaultButton = ContentDialogButton.Primary,
+            };
+
+            // チェックと数字を、どちらから変えても合わせる
+            var syncing = false;
+            int Current() => boxes.Select((box, i) => box.IsChecked == true ? 1 << (8 - i) : 0).Sum() | (mode & ~0x1FF);
+            foreach (var box in boxes)
+            {
+                box.Click += (_, _) =>
+                {
+                    if (syncing)
+                        return;
+                    syncing = true;
+                    octal.Text = UnixMode.Format(Current());
+                    syncing = false;
+                };
+            }
+            octal.TextChanged += (_, _) =>
+            {
+                var parsed = UnixMode.Parse(octal.Text);
+                dialog.IsPrimaryButtonEnabled = parsed is not null;
+                if (syncing || parsed is not { } value)
+                    return;
+                syncing = true;
+                for (var i = 0; i < 9; i++)
+                    boxes[i].IsChecked = (value & (1 << (8 - i))) != 0;
+                mode = value;
+                syncing = false;
+            };
+
+            if (await ShowAsync(dialog).ConfigureAwait(true) != ContentDialogResult.Primary)
+                return null;
+            return UnixMode.Parse(octal.Text);
+        });
+
+    private static void AddCell(Grid grid, FrameworkElement element, int row, int column)
+    {
+        Grid.SetRow(element, row);
+        Grid.SetColumn(element, column);
+        grid.Children.Add(element);
+    }
 
     // 画面のスレッドで動かし、終わるまで待てる Task を返す
     private Task<T> OnUiThreadAsync<T>(Func<Task<T>> action)
