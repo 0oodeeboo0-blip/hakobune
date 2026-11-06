@@ -1,3 +1,4 @@
+using Hakobune.Core.Backups;
 using Hakobune.Core.Connections;
 using Hakobune.Core.Remote;
 using Hakobune.Core.Transfers;
@@ -25,6 +26,7 @@ public sealed class MainViewModelFileOperationTests : IDisposable
             new RemoteItem("notes.txt", "/home/web/notes.txt", RemoteItemType.File, 4, DateTimeOffset.UtcNow, "-rw-r--r--"),
             new RemoteItem("old", "/home/web/old", RemoteItemType.Directory, 0, DateTimeOffset.UtcNow, "drwxr-xr-x"),
         ];
+        _server.Folders["/home/web/old"] = [];
         _server.Files["/home/web/notes.txt"] = "memo"u8.ToArray();
         _secrets.Write(_profile.Id, "right");
     }
@@ -149,7 +151,36 @@ public sealed class MainViewModelFileOperationTests : IDisposable
         Assert.Contains("mv /home/web/old /home/web/archive", _server.Operations);
         Assert.Contains("rm /home/web/notes.txt", _server.Operations);
         Assert.Contains("rmdir /home/web/old", _server.Operations);
-        Assert.True(Assert.Single(_fileDialogs.DeleteQuestions).Remote);
+        var question = Assert.Single(_fileDialogs.DeleteQuestions);
+        Assert.True(question.Remote);
+        // 消す前に控えを取るので、元に戻せる
+        Assert.True(question.Recoverable);
+        var backups = main.Backups!;
+        var backup = Assert.Single(backups.GetEntries(_profile.Id));
+        Assert.Equal("/home/web/notes.txt", backup.OriginalPath);
+        Assert.Equal(BackupKind.ServerDeleted, backup.Kind);
+        Assert.Equal("memo", await File.ReadAllTextAsync(backups.GetFullPath(backup), TestContext.Current.CancellationToken));
+        Assert.Equal("削除", backups.GetBatch(backup.Batch)?.Label);
+    }
+
+    [Fact]
+    public async Task A_server_file_whose_backup_cannot_be_taken_is_not_deleted()
+    {
+        // 一覧にはあるが、受け取れない（控えを取れない）ファイル
+        _server.Folders["/home/web"] =
+        [
+            new RemoteItem("ghost.txt", "/home/web/ghost.txt", RemoteItemType.File, 3, DateTimeOffset.UtcNow, "-rw-r--r--"),
+        ];
+        using var main = await CreateAsync();
+        main.Remote.Activate();
+        main.Remote.UpdateSelection([.. main.Remote.Items]);
+
+        await main.DeleteCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain("rm /home/web/ghost.txt", _server.Operations);
+        Assert.Empty(main.Backups!.GetEntries(_profile.Id));
+        Assert.Equal("削除できませんでした", main.Remote.MessageTitle);
+        Assert.StartsWith("控えを取れなかったので", main.Remote.MessageReason, StringComparison.Ordinal);
     }
 
     [Fact]

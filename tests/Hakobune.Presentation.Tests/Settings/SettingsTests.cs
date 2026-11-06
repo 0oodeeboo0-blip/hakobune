@@ -53,6 +53,7 @@ public sealed class SettingsTests : IDisposable
             IsSidebarOpen = false,
             IsTransferListExpanded = false,
             TransferListHeight = 320,
+            Backups = new BackupSettings { IsEnabled = false, KeepDays = 90, MaxTotalMegabytes = 5120 },
         };
 
         Assert.True(AppSettings.TrySave(SettingsFile, saved));
@@ -257,6 +258,37 @@ public sealed class SettingsTests : IDisposable
         shown.ResetExclusionsCommand.Execute(null);
         await shown.Applying;
         Assert.Equal(new ExclusionSettings(), main.Settings.Exclusions);
+    }
+
+    [Fact]
+    public async Task Backup_choices_are_shown_and_applied_at_once()
+    {
+        SettingsViewModel? shown = null;
+        var dialogs = new ScriptedSettingsDialogs(settings => shown = settings);
+        using var main = await MainViewModel.CreateAsync(Services(dialogs), settings: new AppSettings { LastLocalFolder = MakeFolder("site") });
+
+        await main.OpenSettingsCommand.ExecuteAsync(null);
+        Assert.NotNull(shown);
+        Assert.True(shown.BackupsEnabled);
+        Assert.Equal(new[] { "7 日", "30 日", "90 日" }, shown.BackupKeepNames.ToArray());
+        Assert.Equal(new[] { "500 MB", "1 GB", "5 GB" }, shown.BackupSizeNames.ToArray());
+        Assert.Equal(1, shown.BackupKeepIndex);
+        Assert.Equal(1, shown.BackupSizeIndex);
+        Assert.Equal(Path.Combine(DataDirectory, "backups"), shown.BackupFolder);
+        var backups = main.Backups!;
+        Assert.Equal(TimeSpan.FromDays(30), backups.Limits.KeepFor);
+
+        shown.BackupKeepIndex = 0;
+        shown.BackupSizeIndex = 2;
+        shown.BackupsEnabled = false;
+        await shown.Applying;
+
+        Assert.Equal(new BackupSettings { IsEnabled = false, KeepDays = 7, MaxTotalMegabytes = 5120 }, main.Settings.Backups);
+        Assert.False(backups.Limits.IsEnabled);
+        Assert.Equal(TimeSpan.FromDays(7), backups.Limits.KeepFor);
+        Assert.Equal(5120L << 20, backups.Limits.MaxTotalBytes);
+        Assert.Equal(new BackupSettings { IsEnabled = false, KeepDays = 7, MaxTotalMegabytes = 5120 },
+            (await AppSettings.LoadAsync(SettingsFile, TestContext.Current.CancellationToken)).Backups);
     }
 
     [Fact]

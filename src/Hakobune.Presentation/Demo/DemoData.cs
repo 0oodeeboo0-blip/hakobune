@@ -1,3 +1,4 @@
+using Hakobune.Core.Backups;
 using Hakobune.Core.Connections;
 using Hakobune.Core.Logging;
 using Hakobune.Core.Transfers;
@@ -38,6 +39,9 @@ public static class DemoData
 
     /// <summary>見本の時刻（2026/11/06 12:36:20、パソコンの時刻帯）。</summary>
     public static DateTimeOffset Now { get; } = At(2026, 11, 6, 12, 36, 20);
+
+    /// <summary>見本の接続先（ショップ（本番））の ID。控えの見本に使う。</summary>
+    public static Guid ConnectionId { get; } = new("6d2f4c1e-3b7a-4f0e-9c55-2a1b8e7d9f01");
 
     /// <summary>見本の画面を作る。</summary>
     public static async Task<MainViewModel> CreateAsync(DemoScenario scenario, SynchronizationContext? context = null)
@@ -86,7 +90,64 @@ public static class DemoData
         var status = new ConnectionStatusViewModel();
         status.ShowConnected(shop);
 
-        return new MainViewModel(local, remote, transfers, connections, status, log: SampleLog());
+        var main = new MainViewModel(local, remote, transfers, connections, status, log: SampleLog(), backups: await SampleBackupsAsync().ConfigureAwait(true));
+        main.BackupList.SetConnection(ConnectionId);
+        return main;
+    }
+
+    // 下の「控え」の見本（前の日のアップロード、パネルでの削除、同期で上書き・削除したもの）。控えは一時フォルダに置く
+    private static async Task<BackupStore> SampleBackupsAsync()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "hakobune-demo-backups");
+        CleanOldDemoFolders(parent);
+        var clock = new SettableTimeProvider { Now = Now };
+        var store = new BackupStore(Path.Combine(parent, Guid.NewGuid().ToString("N")), new BackupLimits(), clock);
+
+        async Task TakeAsync(Guid batch, BackupKind kind, string path, int size, DateTimeOffset modified) =>
+            await store.SaveAsync(
+                ConnectionId,
+                batch,
+                kind,
+                RemoteFolder + "/" + path,
+                size,
+                modified,
+                null,
+                (stream, token) => stream.WriteAsync(new byte[size], token).AsTask()).ConfigureAwait(false);
+
+        clock.Now = At(2026, 11, 5, 17, 20);
+        var upload = store.BeginBatch(ConnectionId, "アップロード");
+        await TakeAsync(upload, BackupKind.ServerOverwritten, "about.html", 9_100, At(2026, 10, 30, 11, 5)).ConfigureAwait(true);
+
+        clock.Now = At(2026, 11, 6, 11, 52);
+        var delete = store.BeginBatch(ConnectionId, "削除");
+        await TakeAsync(delete, BackupKind.ServerDeleted, "test.php", 1_240, At(2026, 9, 12, 10, 2)).ConfigureAwait(true);
+
+        clock.Now = At(2026, 11, 6, 12, 30);
+        var sync = store.BeginBatch(ConnectionId, "同期（パソコン → サーバー）");
+        await TakeAsync(sync, BackupKind.ServerOverwritten, "index.html", 12_402, At(2026, 11, 1, 18, 30)).ConfigureAwait(true);
+        await TakeAsync(sync, BackupKind.ServerOverwritten, "css/site.css", 17_950, At(2026, 10, 28, 16, 20)).ConfigureAwait(true);
+        await TakeAsync(sync, BackupKind.ServerDeleted, "campaign-2025/index.html", 8_200, At(2025, 12, 1, 9, 30)).ConfigureAwait(true);
+        await TakeAsync(sync, BackupKind.ServerDeleted, "campaign-2025/banner.jpg", 245_760, At(2025, 12, 1, 9, 28)).ConfigureAwait(true);
+        await TakeAsync(sync, BackupKind.ServerDeleted, "images/old-banner.png", 88_412, At(2025, 7, 3, 18, 12)).ConfigureAwait(true);
+        return store;
+    }
+
+    // 前に見本を出したときの控え（1 時間より前のもの）を片づける
+    private static void CleanOldDemoFolders(string parent)
+    {
+        try
+        {
+            if (!Directory.Exists(parent))
+                return;
+            foreach (var folder in Directory.EnumerateDirectories(parent))
+            {
+                if (DateTime.UtcNow - Directory.GetCreationTimeUtc(folder) > TimeSpan.FromHours(1))
+                    Directory.Delete(folder, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     /// <summary>

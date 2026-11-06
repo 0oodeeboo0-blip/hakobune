@@ -48,6 +48,9 @@ public sealed record AppSettings
     /// <summary>送らないファイル。</summary>
     public ExclusionSettings Exclusions { get; init; } = new();
 
+    /// <summary>上書き・削除の前の控え。</summary>
+    public BackupSettings Backups { get; init; } = new();
+
     /// <summary>読み込む。無い・読めない・壊れているときは、既定の設定にする。</summary>
     public static async Task<AppSettings> LoadAsync(string path, CancellationToken cancellationToken = default)
     {

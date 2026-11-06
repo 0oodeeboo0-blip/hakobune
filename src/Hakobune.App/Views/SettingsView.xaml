@@ -99,6 +99,75 @@
         </Grid>
 
         <TextBlock
+            Margin="0,16,0,4"
+            Style="{StaticResource BodyStrongTextBlockStyle}"
+            Text="控え（元に戻す）" />
+
+        <Grid Style="{StaticResource SettingsCardStyle}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <FontIcon
+                VerticalAlignment="Center"
+                FontSize="16"
+                Glyph="&#xE7A7;" />
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock Text="上書き・削除の前に控えを取る" />
+                <TextBlock
+                    FontSize="12"
+                    Style="{StaticResource SecondaryTextStyle}"
+                    Text="サーバーのファイルを上書き・削除する前と、受け取ってパソコンのファイルを上書きする前に、元のファイルを残します。下の一覧の「控え」から元に戻せます（100 MB より大きいファイルは除きます）"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+            <ToggleSwitch
+                Grid.Column="2"
+                MinWidth="0"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="上書き・削除の前に控えを取る"
+                IsOn="{x:Bind ViewModel.BackupsEnabled, Mode=TwoWay}"
+                OffContent="オフ"
+                OnContent="オン" />
+        </Grid>
+
+        <Grid Style="{StaticResource SettingsCardStyle}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <FontIcon
+                VerticalAlignment="Center"
+                FontSize="16"
+                Glyph="&#xE823;" />
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock Text="残す長さと大きさ" />
+                <TextBlock
+                    FontSize="12"
+                    Style="{StaticResource SecondaryTextStyle}"
+                    Text="日数を過ぎた控えと、合計が大きさを超えたぶんは、古いものから消します"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel
+                Grid.Column="2"
+                VerticalAlignment="Center"
+                Orientation="Horizontal"
+                Spacing="8">
+                <ComboBox
+                    x:Name="BackupKeepBox"
+                    MinWidth="96"
+                    AutomationProperties.Name="控えを残す日数"
+                    SelectedIndex="{x:Bind ViewModel.BackupKeepIndex, Mode=TwoWay}" />
+                <ComboBox
+                    x:Name="BackupSizeBox"
+                    MinWidth="96"
+                    AutomationProperties.Name="控えの合計の大きさの上限"
+                    SelectedIndex="{x:Bind ViewModel.BackupSizeIndex, Mode=TwoWay}" />
+            </StackPanel>
+        </Grid>
+
+        <TextBlock
             x:Name="ExclusionsHeading"
             Margin="0,16,0,4"
             Style="{StaticResource BodyStrongTextBlockStyle}"

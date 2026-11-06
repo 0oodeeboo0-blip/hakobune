@@ -274,6 +274,11 @@
                                     <FontIcon Glyph="&#xE81C;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
+                            <MenuFlyoutItem Command="{x:Bind ViewModel.ShowBackupsCommand}" Text="控え（元に戻す）">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE7A7;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
                             <MenuFlyoutSeparator />
                             <MenuFlyoutItem Command="{x:Bind ViewModel.OpenSettingsCommand}" Text="設定…">
                                 <MenuFlyoutItem.Icon>

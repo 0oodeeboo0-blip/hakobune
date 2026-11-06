@@ -37,6 +37,11 @@ public sealed class SettingsViewModel : ObservableObject
         ShowHiddenFiles = current.ShowHiddenFiles;
         UseCompactRows = current.UseCompactRows;
 
+        BackupsEnabled = current.Backups.IsEnabled;
+        BackupKeepIndex = IndexOf(BackupSettings.KeepDaysChoices, current.Backups.KeepDays, fallback: 1);
+        BackupSizeIndex = IndexOf(BackupSettings.TotalMegabytesChoices, current.Backups.MaxTotalMegabytes, fallback: 1);
+        BackupFolder = main.Backups?.Root ?? "";
+
         ExclusionsEnabled = current.Exclusions.IsEnabled;
         foreach (var pattern in current.Exclusions.Patterns)
             ExclusionItems.Add(NewItem(pattern.Pattern, pattern.IsEnabled));
@@ -90,6 +95,65 @@ public sealed class SettingsViewModel : ObservableObject
             if (SetProperty(ref field, value))
                 Apply(_main.Settings with { UseCompactRows = value });
         }
+    }
+
+    // ---- 控え ----
+
+    /// <summary>上書き・削除の前に控えを取るか。</summary>
+    public bool BackupsEnabled
+    {
+        get;
+        set
+        {
+            if (SetProperty(ref field, value))
+                Apply(_main.Settings with { Backups = _main.Settings.Backups with { IsEnabled = value } });
+        }
+    }
+
+    /// <summary>残す日数の選び方。</summary>
+    public IReadOnlyList<string> BackupKeepNames { get; } = [.. BackupSettings.KeepDaysChoices.Select(days => $"{days} 日")];
+
+    /// <summary>選んだ残す日数（<see cref="BackupKeepNames"/> の番号）。</summary>
+    public int BackupKeepIndex
+    {
+        get;
+        set
+        {
+            if (value < 0 || value >= BackupSettings.KeepDaysChoices.Count || !SetProperty(ref field, value))
+                return;
+            Apply(_main.Settings with { Backups = _main.Settings.Backups with { KeepDays = BackupSettings.KeepDaysChoices[value] } });
+        }
+    }
+
+    /// <summary>全体の大きさの上限の選び方。</summary>
+    public IReadOnlyList<string> BackupSizeNames { get; } = [.. BackupSettings.TotalMegabytesChoices.Select(BackupSettings.DescribeMegabytes)];
+
+    /// <summary>選んだ全体の大きさの上限（<see cref="BackupSizeNames"/> の番号）。</summary>
+    public int BackupSizeIndex
+    {
+        get;
+        set
+        {
+            if (value < 0 || value >= BackupSettings.TotalMegabytesChoices.Count || !SetProperty(ref field, value))
+                return;
+            Apply(_main.Settings with { Backups = _main.Settings.Backups with { MaxTotalMegabytes = BackupSettings.TotalMegabytesChoices[value] } });
+        }
+    }
+
+    /// <summary>控えの置き場（エクスプローラーで開くため）。</summary>
+    public string BackupFolder { get; }
+
+    /// <summary>控えの置き場があるか（見本の画面では無い）。</summary>
+    public bool HasBackupFolder => BackupFolder.Length > 0;
+
+    private static int IndexOf(IReadOnlyList<int> choices, int value, int fallback)
+    {
+        for (var i = 0; i < choices.Count; i++)
+        {
+            if (choices[i] == value)
+                return i;
+        }
+        return fallback;
     }
 
     // ---- 送らないファイル ----

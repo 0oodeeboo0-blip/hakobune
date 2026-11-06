@@ -113,4 +113,15 @@ public class DemoDataTests
         sync.DeleteOnlyOnTarget = true;
         Assert.Equal("7 件を送り、2 件を消す", sync.PrimaryText);
     }
+
+    [Fact]
+    public async Task The_backups_sample_shows_three_operations_newest_first()
+    {
+        using var main = await DemoData.CreateAsync(DemoScenario.Normal);
+
+        Assert.Equal(new[] { "同期（パソコン → サーバー）", "削除", "アップロード" }, main.BackupList.Groups.Select(group => group.Title).ToArray());
+        Assert.Equal(5, main.BackupList.Groups[0].Rows.Count);
+        Assert.Equal("5 件を元に戻す", main.BackupList.Groups[0].RestoreAllText);
+        Assert.Equal("上書き 2・削除 3", string.Join("・", main.BackupList.Groups[0].SummaryText.Split('・').Take(2)));
+    }
 }

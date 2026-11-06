@@ -184,6 +184,8 @@ public sealed class SyncViewModel : ObservableObject
         {
             if (!SetProperty(ref field, value))
                 return;
+            OnPropertyChanged(nameof(ShowsDeleteWarning));
+            OnPropertyChanged(nameof(ShowsDeleteBackupNote));
             // 印（残す・消す）を付け直す
             if (_result is { } result)
                 OnlyOnTargetRows = [.. result.Items.Where(item => item.Change == SyncChange.OnlyOnTarget).Select(item => ToRow(item, TargetSide))];
@@ -193,6 +195,15 @@ public sealed class SyncViewModel : ObservableObject
 
     /// <summary>送り先にだけあるものを消せるか（アップロードのときだけ）。</summary>
     public bool CanDeleteOnlyOnTarget => IsUpload && HasOnlyOnTargetRows;
+
+    /// <summary>上書き・削除の前に控えを取るか（設定の「控え」）。</summary>
+    public bool BacksUp { get; init; }
+
+    /// <summary>消すことを選んだが、控えを取らないので元に戻せないか（赤い注意を出す）。</summary>
+    public bool ShowsDeleteWarning => DeleteOnlyOnTarget && !BacksUp;
+
+    /// <summary>消すことを選び、消す前に控えを取るか（そう伝える）。</summary>
+    public bool ShowsDeleteBackupNote => DeleteOnlyOnTarget && BacksUp;
 
     /// <summary>決定のボタンの文（「5 件を送る」「5 件を送り、2 件を消す」）。</summary>
     public string PrimaryText { get; private set => SetProperty(ref field, value); } = "比べています…";
@@ -288,6 +299,8 @@ public sealed class SyncViewModel : ObservableObject
         ConflictHeader = $"名前は同じで種類が違うもの（{ConflictRows.Count:N0}）。ファイルとフォルダ（またはリンク）なので、{(upload ? "送りません" : "受け取りません")}";
 
         var notes = new List<string>();
+        if (BacksUp && plan.Items.Any(item => item.Change is SyncChange.Changed or SyncChange.TargetNewer))
+            notes.Add($"上書きする前に、{targetSide}のいまのファイルの控えを取ります（下の一覧の「控え」から元に戻せます）。");
         if (plan.ExcludedCount > 0)
             notes.Add($"送らないファイル（Thumbs.db など）{plan.ExcludedCount:N0} 件は比べていません。");
         if (plan.SkippedLinks > 0)

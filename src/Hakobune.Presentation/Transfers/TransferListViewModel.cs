@@ -93,6 +93,9 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
     /// <summary>転送のタブではなく「ログ」を出しているか。</summary>
     public bool IsLogSelected { get; private set => SetProperty(ref field, value); }
 
+    /// <summary>転送のタブではなく「控え」（上書き・削除の前の控え）を出しているか。</summary>
+    public bool IsBackupsSelected { get; private set => SetProperty(ref field, value); }
+
     /// <summary>「ログ」を出す（たたんでいれば広げる）。転送のタブは、戻ったときのために覚えておく。</summary>
     public void SelectLog()
     {
@@ -100,7 +103,19 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
         if (IsLogSelected)
             return;
         SelectedTab.IsSelected = false;
+        IsBackupsSelected = false;
         IsLogSelected = true;
+    }
+
+    /// <summary>「控え」を出す（たたんでいれば広げる）。</summary>
+    public void SelectBackups()
+    {
+        IsExpanded = true;
+        if (IsBackupsSelected)
+            return;
+        SelectedTab.IsSelected = false;
+        IsLogSelected = false;
+        IsBackupsSelected = true;
     }
 
     /// <summary>一覧を広げているか。</summary>
@@ -312,9 +327,10 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
     public void SelectTab(TransferTab tab)
     {
         var selected = Tabs.First(item => item.Tab == tab);
-        if (IsLogSelected)
+        if (IsLogSelected || IsBackupsSelected)
         {
             IsLogSelected = false;
+            IsBackupsSelected = false;
             SelectedTab.IsSelected = ReferenceEquals(selected, SelectedTab);
         }
         if (ReferenceEquals(selected, SelectedTab))

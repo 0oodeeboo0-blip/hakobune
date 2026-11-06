@@ -47,6 +47,9 @@ internal sealed record AppOptions
     /// <summary>下の一覧で「ログ」を出しておく。</summary>
     public bool ShowLog { get; init; }
 
+    /// <summary>下の一覧で「控え」を出しておく。</summary>
+    public bool ShowBackups { get; init; }
+
     /// <summary>ウインドウの中の幅。</summary>
     public int Width { get; init; } = 1280;
 
@@ -98,6 +101,7 @@ internal sealed record AppOptions
                             "settings-exclusions" => DemoDialog.SettingsExclusions,
                             "sync" => DemoDialog.Sync,
                             "sync-delete" => DemoDialog.SyncDelete,
+                            "restore" => DemoDialog.Restore,
                             _ => null,
                         },
                     };
@@ -129,6 +133,9 @@ internal sealed record AppOptions
                     break;
                 case "--log":
                     options = options with { ShowLog = true };
+                    break;
+                case "--backups":
+                    options = options with { ShowBackups = true };
                     break;
                 case "--screenshot":
                     options = options with { ScreenshotPath = value };

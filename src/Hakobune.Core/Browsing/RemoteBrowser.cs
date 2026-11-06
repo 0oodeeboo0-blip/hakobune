@@ -124,6 +124,14 @@ public sealed class RemoteBrowser : IAsyncDisposable
             return true;
         }, cancellationToken);
 
+    /// <summary>ファイルを受け取る（消す前に控えを取るときなど）。<paramref name="destination"/> の今の位置から書く。</summary>
+    public Task DownloadAsync(string path, Stream destination, CancellationToken cancellationToken) =>
+        RunAsync(async session =>
+        {
+            await session.DownloadAsync(path, destination, 0, null, cancellationToken).ConfigureAwait(false);
+            return true;
+        }, cancellationToken);
+
     /// <summary>属性（パーミッション）を変える。</summary>
     public Task SetPermissionsAsync(string path, int mode, CancellationToken cancellationToken) =>
         RunAsync(async session =>

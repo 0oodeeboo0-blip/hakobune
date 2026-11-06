@@ -3,6 +3,7 @@
     x:Class="Hakobune.App.Views.TransferPanelView"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:backups="using:Hakobune.Presentation.Backups"
     xmlns:helpers="using:Hakobune.App.Helpers"
     xmlns:logging="using:Hakobune.Presentation.Logging"
     xmlns:transfers="using:Hakobune.Presentation.Transfers">
@@ -138,6 +139,28 @@
                         Visibility="{x:Bind ViewModel.IsLogSelected, Mode=OneWay}" />
                 </Grid>
             </Button>
+            <!--  控え（上書き・削除の前の元のファイル）  -->
+            <Button
+                AutomationProperties.Name="控え"
+                Click="OnBackupsTabClick"
+                Style="{StaticResource TabButtonStyle}"
+                ToolTipService.ToolTip="上書き・削除する前に取った、元のファイルの控え（元に戻せます）">
+                <Grid>
+                    <TextBlock
+                        VerticalAlignment="Center"
+                        FontWeight="{x:Bind helpers:Ui.SemiBoldIf(ViewModel.IsBackupsSelected), Mode=OneWay}"
+                        Opacity="{x:Bind helpers:Ui.DimUnless(ViewModel.IsBackupsSelected), Mode=OneWay}"
+                        Text="控え" />
+                    <Rectangle
+                        Height="3"
+                        Margin="0,0,0,1"
+                        VerticalAlignment="Bottom"
+                        Fill="{ThemeResource AccentFillColorDefaultBrush}"
+                        RadiusX="1.5"
+                        RadiusY="1.5"
+                        Visibility="{x:Bind ViewModel.IsBackupsSelected, Mode=OneWay}" />
+                </Grid>
+            </Button>
             </StackPanel>
             <!--  一時停止中なら、その理由。そうでなければ件数  -->
             <StackPanel
@@ -228,7 +251,7 @@
 
         <!--  転送の一覧とログ  -->
         <Grid Grid.Row="1" Visibility="{x:Bind ViewModel.IsExpanded, Mode=OneWay}">
-            <Grid Visibility="{x:Bind helpers:Ui.VisibleUnless(ViewModel.IsLogSelected), Mode=OneWay}">
+            <Grid Visibility="{x:Bind helpers:Ui.VisibleUnlessAny(ViewModel.IsLogSelected, ViewModel.IsBackupsSelected), Mode=OneWay}">
             <ListView
                 Padding="0,4"
                 ItemContainerStyle="{StaticResource TransferRowContainerStyle}"
@@ -436,6 +459,190 @@
                 TextAlignment="Center"
                 TextWrapping="Wrap"
                 Visibility="{x:Bind ViewModel.HasNoRows, Mode=OneWay}" />
+            </Grid>
+
+            <!--  控え  -->
+            <Grid Visibility="{x:Bind ViewModel.IsBackupsSelected, Mode=OneWay}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid Padding="14,2,8,0" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource SecondaryCaptionTextStyle}" Text="{x:Bind Backups.SummaryText, Mode=OneWay}" />
+                    <Button
+                        Grid.Column="1"
+                        Height="32"
+                        Padding="10,0"
+                        Click="OnOpenBackupFolderClick"
+                        Style="{StaticResource ToolbarButtonStyle}"
+                        ToolTipService.ToolTip="控えの置き場をエクスプローラーで開く">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <FontIcon FontSize="14" Glyph="&#xE838;" />
+                            <TextBlock Text="置き場を開く" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+                <ListView
+                    Grid.Row="1"
+                    Padding="0,2,0,4"
+                    ItemContainerStyle="{StaticResource BackupGroupContainerStyle}"
+                    ItemsSource="{x:Bind Backups.Groups, Mode=OneWay}"
+                    SelectionMode="None">
+                    <ListView.ItemContainerTransitions>
+                        <TransitionCollection />
+                    </ListView.ItemContainerTransitions>
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="backups:BackupGroupViewModel">
+                            <StackPanel
+                                Padding="0,6,0,8"
+                                AutomationProperties.Name="{x:Bind AccessibleName}"
+                                Spacing="2">
+                                <!--  操作（同期 1 回など）の見出しと、まとめて元に戻すボタン  -->
+                                <Grid ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Style="{StaticResource SecondaryCaptionTextStyle}" Text="{x:Bind WhenText}" />
+                                    <StackPanel
+                                        Grid.Column="1"
+                                        VerticalAlignment="Center"
+                                        Orientation="Horizontal"
+                                        Spacing="8">
+                                        <TextBlock
+                                            FontWeight="SemiBold"
+                                            Text="{x:Bind Title}"
+                                            TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Style="{StaticResource SecondaryCaptionTextStyle}" Text="{x:Bind SummaryText}" />
+                                    </StackPanel>
+                                    <Button
+                                        Grid.Column="2"
+                                        Height="30"
+                                        Padding="10,0"
+                                        Command="{x:Bind RestoreAllCommand}"
+                                        Style="{StaticResource ToolbarButtonStyle}"
+                                        ToolTipService.ToolTip="この操作の前の状態に戻す（いまの中身は、また控えに残ります）">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon
+                                                FontSize="14"
+                                                Foreground="{ThemeResource HakobuneAccentTextBrush}"
+                                                Glyph="&#xE7A7;" />
+                                            <TextBlock Text="{x:Bind RestoreAllText}" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button
+                                        Grid.Column="3"
+                                        AutomationProperties.Name="その他"
+                                        Style="{StaticResource RowActionButtonStyle}"
+                                        ToolTipService.ToolTip="その他">
+                                        <FontIcon FontSize="14" Glyph="&#xE712;" />
+                                        <Button.Flyout>
+                                            <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                                <MenuFlyoutItem Command="{x:Bind DeleteCommand}" Text="この控えを消す">
+                                                    <MenuFlyoutItem.Icon>
+                                                        <FontIcon Glyph="&#xE74D;" />
+                                                    </MenuFlyoutItem.Icon>
+                                                </MenuFlyoutItem>
+                                            </MenuFlyout>
+                                        </Button.Flyout>
+                                    </Button>
+                                </Grid>
+                                <!--  控え 1 つずつ  -->
+                                <ItemsControl ItemsSource="{x:Bind Rows}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="backups:BackupRowViewModel">
+                                            <Grid
+                                                MinHeight="30"
+                                                Padding="20,0,0,0"
+                                                AutomationProperties.Name="{x:Bind AccessibleName}"
+                                                ColumnSpacing="10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="72" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border
+                                                    Padding="8,1,8,2"
+                                                    HorizontalAlignment="Left"
+                                                    VerticalAlignment="Center"
+                                                    Background="{ThemeResource HakobuneWarningTagBackgroundBrush}"
+                                                    CornerRadius="10"
+                                                    Visibility="{x:Bind IsOverwritten}">
+                                                    <TextBlock
+                                                        FontSize="12"
+                                                        Foreground="{ThemeResource HakobuneWarningTagTextBrush}"
+                                                        Text="{x:Bind KindText}" />
+                                                </Border>
+                                                <Border
+                                                    Padding="8,1,8,2"
+                                                    HorizontalAlignment="Left"
+                                                    VerticalAlignment="Center"
+                                                    Background="{ThemeResource HakobuneFailedBadgeBrush}"
+                                                    CornerRadius="10"
+                                                    Visibility="{x:Bind IsDeleted}">
+                                                    <TextBlock
+                                                        FontSize="12"
+                                                        Foreground="{ThemeResource HakobuneFailedTextBrush}"
+                                                        Text="{x:Bind KindText}" />
+                                                </Border>
+                                                <StackPanel
+                                                    Grid.Column="1"
+                                                    VerticalAlignment="Center"
+                                                    Orientation="Horizontal"
+                                                    Spacing="8">
+                                                    <TextBlock Text="{x:Bind Name}" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Style="{StaticResource SecondaryCaptionTextStyle}" Text="{x:Bind Folder}" />
+                                                </StackPanel>
+                                                <TextBlock
+                                                    Grid.Column="2"
+                                                    MinWidth="56"
+                                                    Style="{StaticResource SecondaryCaptionTextStyle}"
+                                                    Text="{x:Bind SizeText}"
+                                                    TextAlignment="Right" />
+                                                <TextBlock
+                                                    Grid.Column="3"
+                                                    MinWidth="76"
+                                                    Style="{StaticResource SecondaryCaptionTextStyle}"
+                                                    Text="{x:Bind WhenText}" />
+                                                <Button
+                                                    Grid.Column="4"
+                                                    AutomationProperties.Name="元に戻す"
+                                                    Command="{x:Bind RestoreCommand}"
+                                                    Style="{StaticResource RowActionButtonStyle}"
+                                                    ToolTipService.ToolTip="元に戻す">
+                                                    <FontIcon FontSize="14" Glyph="&#xE7A7;" />
+                                                </Button>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock
+                                    Padding="20,2,0,0"
+                                    Style="{StaticResource SecondaryCaptionTextStyle}"
+                                    Text="{x:Bind MoreText}"
+                                    Visibility="{x:Bind HasMore}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+                <TextBlock
+                    Grid.Row="1"
+                    MaxWidth="460"
+                    Margin="24"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource SecondaryTextStyle}"
+                    Text="{x:Bind Backups.EmptyText, Mode=OneWay}"
+                    TextAlignment="Center"
+                    Visibility="{x:Bind helpers:Ui.VisibleUnless(Backups.HasGroups), Mode=OneWay}" />
             </Grid>
 
             <!--  ログ  -->

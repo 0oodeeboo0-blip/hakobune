@@ -26,7 +26,8 @@ public sealed record SavedTransferItem(
     bool SizeVerified = false,
     DateTimeOffset? FinishedAt = null,
     bool IsFolder = false,
-    bool IsDelete = false);
+    bool IsDelete = false,
+    Guid? Batch = null);
 
 /// <summary>送信待ちをファイルに保存し、読み込む。</summary>
 public static class TransferQueueFile

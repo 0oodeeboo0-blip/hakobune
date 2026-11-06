@@ -239,7 +239,12 @@
                     FontSize="12"
                     Style="{StaticResource CriticalTextStyle}"
                     Text="サーバーから消したものは、元に戻せません。消すものをよく確かめてください。"
-                    Visibility="{x:Bind ViewModel.DeleteOnlyOnTarget, Mode=OneWay}" />
+                    Visibility="{x:Bind ViewModel.ShowsDeleteWarning, Mode=OneWay}" />
+                <TextBlock
+                    FontSize="12"
+                    Style="{StaticResource SecondaryTextStyle}"
+                    Text="消す前に控えを取ります。下の一覧の「控え」から元に戻せます（100 MB より大きいファイルは除きます）。"
+                    Visibility="{x:Bind ViewModel.ShowsDeleteBackupNote, Mode=OneWay}" />
                 <ListView
                     MaxHeight="128"
                     AutomationProperties.Name="{x:Bind ViewModel.OnlyOnTargetHeader, Mode=OneWay}"

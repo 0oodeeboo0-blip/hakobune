@@ -61,6 +61,7 @@ public enum ConflictPolicy
 /// 送るのではなく、サーバーの <paramref name="RemotePath"/>（ファイルかフォルダ）を消す依頼か（同期で「サーバーからも消す」を選んだとき。
 /// 向きはアップロードで、<paramref name="LocalPath"/> は空）。
 /// </param>
+/// <param name="Batch">まとめて加えた操作（同期 1 回など）。上書き・削除の前の控えを、操作ごとにまとめるのに使う。</param>
 public sealed record TransferRequest(
     TransferDirection Direction,
     string LocalPath,
@@ -68,7 +69,8 @@ public sealed record TransferRequest(
     ConflictPolicy OnConflict = ConflictPolicy.Overwrite,
     long? ExpectedBytes = null,
     bool IsFolder = false,
-    bool IsDelete = false);
+    bool IsDelete = false,
+    Guid? Batch = null);
 
 /// <summary>
 /// 送信待ちの 1 件の、ある時点の様子。画面に出すために使う。
@@ -162,4 +164,7 @@ public sealed record TransferOptions
 
     /// <summary>ダウンロード中のファイルにつける名前の末尾。完了したら外す。</summary>
     public string PartialDownloadSuffix { get; init; } = ".hakobune-part";
+
+    /// <summary>上書き・削除の前に控えを取るもの。null なら取らない。</summary>
+    public ITransferBackups? Backups { get; init; }
 }

@@ -242,6 +242,12 @@
                 <Setter Property="Padding" Value="0" />
             </Style>
 
+            <!-- 控えの一覧の 1 まとまり（中に行が並ぶので、高さは中身に合わせる） -->
+            <Style x:Key="BackupGroupContainerStyle" BasedOn="{StaticResource DefaultListViewItemStyle}" TargetType="ListViewItem">
+                <Setter Property="Padding" Value="14,0,10,0" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            </Style>
+
             <!-- ログの 1 行（転送の一覧より低く、たくさん見えるように） -->
             <Style x:Key="LogRowContainerStyle" BasedOn="{StaticResource DefaultListViewItemStyle}" TargetType="ListViewItem">
                 <Setter Property="MinHeight" Value="26" />

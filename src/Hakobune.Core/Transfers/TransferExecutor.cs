@@ -20,7 +20,7 @@ internal interface ITransferSink
 /// <summary>1 回の試行の結果（完了またはスキップ）。失敗は例外で知らせる。</summary>
 internal readonly record struct ExecutionResult(TransferState State, string? Note, bool SizeVerified)
 {
-    public static ExecutionResult Completed(bool sizeVerified) => new(TransferState.Completed, null, sizeVerified);
+    public static ExecutionResult Completed(bool sizeVerified, string? note = null) => new(TransferState.Completed, note, sizeVerified);
 
     public static ExecutionResult Skipped(string note) => new(TransferState.Skipped, note, false);
 }
@@ -44,7 +44,7 @@ internal sealed class TransferExecutor(TransferOptions options)
     }
 
     // サーバーのファイルかフォルダを消す（同期で「サーバーからも消す」を選んだとき）。もう無ければ、それでよい
-    private static async Task<ExecutionResult> DeleteAsync(TransferItem item, IRemoteSession session, ITransferSink sink, CancellationToken cancellationToken)
+    private async Task<ExecutionResult> DeleteAsync(TransferItem item, IRemoteSession session, ITransferSink sink, CancellationToken cancellationToken)
     {
         var request = item.Request;
         sink.SetTotalBytes(item, 0);
@@ -55,6 +55,10 @@ internal sealed class TransferExecutor(TransferOptions options)
         var isDirectory = existing?.IsDirectory ?? await session.DirectoryExistsAsync(request.RemotePath, cancellationToken).ConfigureAwait(false);
         if (existing is null && !isDirectory)
             return ExecutionResult.Skipped("もうありませんでした");
+        // 消す前に控えを取る（前の試行で消しにかかっていたら、もう取ってある）
+        string? note = null;
+        if (!item.HasWrittenTarget && options.Backups is { } backups)
+            note = await backups.BeforeDeleteOnServerAsync(session, request, existing, isDirectory, cancellationToken).ConfigureAwait(false);
         sink.MarkTargetWritten(item);
         if (isDirectory)
         {
@@ -65,7 +69,7 @@ internal sealed class TransferExecutor(TransferOptions options)
         {
             await session.DeleteFileAsync(request.RemotePath, cancellationToken).ConfigureAwait(false);
         }
-        return ExecutionResult.Completed(sizeVerified: false);
+        return ExecutionResult.Completed(sizeVerified: false, note);
     }
 
     // 空のフォルダを、送り先にも作る（すでにあれば何もしない）
@@ -111,6 +115,7 @@ internal sealed class TransferExecutor(TransferOptions options)
             await sink.EnsureRemoteDirectoryAsync(session, parent, cancellationToken).ConfigureAwait(false);
 
         long offset = 0;
+        string? note = null;
         var existing = await session.GetItemAsync(request.RemotePath, cancellationToken).ConfigureAwait(false);
         if (existing is not null)
         {
@@ -133,6 +138,9 @@ internal sealed class TransferExecutor(TransferOptions options)
                         when existing.Modified is { } remoteModified && local.LastWriteTimeUtc <= remoteModified.UtcDateTime:
                         return ExecutionResult.Skipped("サーバーのほうが新しいため飛ばしました");
                 }
+                // 上書きする前に、サーバーのいまのファイルの控えを取る
+                if (options.Backups is { } backups)
+                    note = await backups.BeforeOverwriteOnServerAsync(session, request, existing, length, cancellationToken).ConfigureAwait(false);
             }
         }
 
@@ -163,7 +171,7 @@ internal sealed class TransferExecutor(TransferOptions options)
             await TrySetRemoteModifiedTimeAsync(session, request.RemotePath, local.LastWriteTimeUtc, cancellationToken).ConfigureAwait(false);
 
         sink.ReportProgress(item, length);
-        return ExecutionResult.Completed(sizeVerified: options.VerifySize);
+        return ExecutionResult.Completed(sizeVerified: options.VerifySize, note);
     }
 
     private async Task<ExecutionResult> DownloadAsync(TransferItem item, IRemoteSession session, ITransferSink sink, CancellationToken cancellationToken)
@@ -223,12 +231,16 @@ internal sealed class TransferExecutor(TransferOptions options)
                 $"サーバー上の大きさは {length:N0} バイトですが、受け取ったのは {downloaded:N0} バイトでした"));
         }
 
+        // パソコンのファイルを置き換える前に、控えを取る
+        string? note = null;
+        if (options.Backups is { } backups && File.Exists(finalPath))
+            note = await backups.BeforeOverwriteOnComputerAsync(request, finalPath, downloaded, cancellationToken).ConfigureAwait(false);
         File.Move(partPath, finalPath, overwrite: true);
         if (options.PreserveModifiedTime && remote.Modified is { } modified)
             File.SetLastWriteTimeUtc(finalPath, modified.UtcDateTime);
 
         sink.ReportProgress(item, downloaded);
-        return ExecutionResult.Completed(sizeVerified: options.VerifySize && length >= 0);
+        return ExecutionResult.Completed(sizeVerified: options.VerifySize && length >= 0, note);
     }
 
     private static async Task TrySetRemoteModifiedTimeAsync(IRemoteSession session, string path, DateTime modifiedUtc, CancellationToken cancellationToken)

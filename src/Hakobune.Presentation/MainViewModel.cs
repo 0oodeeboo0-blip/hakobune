@@ -1,12 +1,14 @@
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Hakobune.Core.Backups;
 using Hakobune.Core.Browsing;
 using Hakobune.Core.Connections;
 using Hakobune.Core.Logging;
 using Hakobune.Core.Remote;
 using Hakobune.Core.Text;
 using Hakobune.Core.Transfers;
+using Hakobune.Presentation.Backups;
 using Hakobune.Presentation.Connections;
 using Hakobune.Presentation.Files;
 using Hakobune.Presentation.Logging;
@@ -25,6 +27,8 @@ namespace Hakobune.Presentation;
 /// <param name="LocalFiles">パソコンのファイルの操作（Windows ではごみ箱を使う）。null ならそのまま消す。</param>
 /// <param name="SettingsDialogs">設定の画面。null なら設定の画面は出さない。</param>
 /// <param name="SyncDialogs">同期の確認の画面。null なら同期はできない。</param>
+/// <param name="BackupDirectory">上書き・削除の前の控えの置き場（大きくなるので %LOCALAPPDATA% に置く）。null なら設定の場所の下。</param>
+/// <param name="BackupDialogs">控えから元に戻すときに聞く画面。null なら聞かずに戻す。</param>
 public sealed record AppServices(
     string DataDirectory,
     ISecretStore Secrets,
@@ -34,10 +38,15 @@ public sealed record AppServices(
     IFileDialogs? FileDialogs = null,
     ILocalFileOperations? LocalFiles = null,
     ISettingsDialogs? SettingsDialogs = null,
-    ISyncDialogs? SyncDialogs = null)
+    ISyncDialogs? SyncDialogs = null,
+    string? BackupDirectory = null,
+    IBackupDialogs? BackupDialogs = null)
 {
     /// <summary>接続先の一覧のファイル。</summary>
     public string ConnectionsFile => Path.Combine(DataDirectory, "connections.json");
+
+    /// <summary>控えの置き場。</summary>
+    public string BackupsDirectory => BackupDirectory ?? Path.Combine(DataDirectory, "backups");
 
     /// <summary>信頼したサーバーの鍵のファイル。</summary>
     public string TrustedKeysFile => Path.Combine(DataDirectory, "trusted-keys.json");
@@ -71,6 +80,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private readonly HashSet<FilePaneViewModel> _refreshScheduled = [];
     private readonly TimeProvider _time;
     private readonly SynchronizationContext? _context;
+    private readonly BackupStore? _backups;
     private TransferController? _transferController;
 
     /// <summary>部品を組み合わせて作る。<paramref name="services"/> が null なら、接続はしない（見本の画面）。</summary>
@@ -83,7 +93,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         AppServices? services = null,
         ConnectionService? connector = null,
         TimeProvider? timeProvider = null,
-        ActivityLog? log = null)
+        ActivityLog? log = null,
+        BackupStore? backups = null)
     {
         ArgumentNullException.ThrowIfNull(local);
         ArgumentNullException.ThrowIfNull(remote);
@@ -101,6 +112,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _context = SynchronizationContext.Current;
         Log = log ?? new ActivityLog(timeProvider: _time);
         LogView = new LogViewModel(Log, _time, _context);
+        // 上書き・削除の前の控え（見本の画面では、見本の控えだけを出す）
+        _backups = backups ?? (services is null ? null : new BackupStore(services.BackupsDirectory, Settings.Backups.ToLimits(), _time));
+        BackupList = new BackupListViewModel(_backups, _time, _context);
+        BackupList.RestoreRequested += (_, entries) => _ = RestoreAsync(entries);
         local.Log = Log;
         remote.Log = Log;
         local.Exclusions = Settings.Exclusions.ToRules();
@@ -132,6 +147,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ChangePermissionsCommand = new AsyncRelayCommand(() => ChangePermissionsAsync(Remote), () => CanChangePermissions);
         OpenSettingsCommand = new AsyncRelayCommand(OpenSettingsAsync, () => _services?.SettingsDialogs is not null);
         ShowLogCommand = new RelayCommand(Transfers.SelectLog);
+        ShowBackupsCommand = new RelayCommand(Transfers.SelectBackups);
         ToggleHiddenFilesCommand = new AsyncRelayCommand(() => ApplySettingsAsync(Settings with { ShowHiddenFiles = !Settings.ShowHiddenFiles }));
         ToggleCompactRowsCommand = new AsyncRelayCommand(() => ApplySettingsAsync(Settings with { UseCompactRows = !Settings.UseCompactRows }));
         local.PropertyChanged += OnPanePropertyChanged;
@@ -166,6 +182,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>いまの接続の様子。</summary>
     public ConnectionStatusViewModel Connection { get; }
+
+    /// <summary>下の一覧の「控え」（上書き・削除の前の控え）。</summary>
+    public BackupListViewModel BackupList { get; }
+
+    /// <summary>控えの置き場（見本の画面では null）。</summary>
+    public BackupStore? Backups => _backups;
+
+    /// <summary>下の一覧の「控え」を出す。</summary>
+    public IRelayCommand ShowBackupsCommand { get; }
 
     /// <summary>ツールバーの操作が効く側（最後に触った側）。</summary>
     public FilePaneViewModel ActivePane
@@ -348,6 +373,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
 
         // 前回の様子に戻す（前に開いていたフォルダが無くなっていれば、ホームから）
         main.Settings = settings;
+        if (main._backups is { } backups)
+        {
+            backups.Limits = settings.Backups.ToLimits();
+            await backups.LoadAsync().ConfigureAwait(true);
+            CleanRestoreStaging(time.GetUtcNow());
+        }
         main.IsSidebarOpen = settings.IsSidebarOpen;
         transfers.IsExpanded = settings.IsTransferListExpanded;
         transfers.PanelHeight = settings.TransferListHeight;
@@ -368,10 +399,17 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ArgumentNullException.ThrowIfNull(settings);
         var hiddenChanged = settings.ShowHiddenFiles != Settings.ShowHiddenFiles;
         var exclusionsChanged = !Equals(settings.Exclusions, Settings.Exclusions);
+        var backupsChanged = !Equals(settings.Backups, Settings.Backups);
         Settings = settings;
         Local.UseCompactRows = Remote.UseCompactRows = settings.UseCompactRows;
         if (exclusionsChanged)
             UpdateExclusions();
+        if (backupsChanged && _backups is not null)
+        {
+            _backups.Limits = settings.Backups.ToLimits();
+            _backups.Prune();
+            BackupList.Refresh();
+        }
         if (hiddenChanged && Local.Source is LocalFileSource source)
         {
             source.ShowHidden = settings.ShowHiddenFiles;
@@ -583,6 +621,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _session = result;
         _connected = item;
         UpdateExclusions();
+        BackupList.SetConnection(item.Profile.Id);
         item.IsConnected = true;
         IsConnected = true;
         Connection.ShowConnected(item);
@@ -675,6 +714,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _session = null;
         _connected = null;
         UpdateExclusions();
+        BackupList.SetConnection(null);
         if (connected is not null)
             connected.IsConnected = false;
         IsConnected = false;
@@ -691,7 +731,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private async Task AttachTransfersAsync(ConnectResult result, ConnectionItemViewModel item)
     {
         var profile = item.Profile;
-        var options = new TransferOptions { MaxConcurrency = Math.Clamp(profile.MaxConcurrency, 1, 10) };
+        var options = new TransferOptions
+        {
+            MaxConcurrency = Math.Clamp(profile.MaxConcurrency, 1, 10),
+            Backups = _backups is null ? null : new ConnectionBackups(_backups, profile.Id),
+        };
         var queueFile = item.IsTemporary || _services is null ? null : _services.QueueFile(profile.Id);
         var controller = new TransferController(result.Factory!, options, queueFile, _time, Log, item.Name);
         await controller.RestoreAsync().ConfigureAwait(true);
@@ -801,7 +845,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             (progress, cancellationToken) => upload
                 ? SyncPlanner.PlanAsync(direction, local, localRoot, remote, remoteRoot, exclusions, progress, cancellationToken)
                 : SyncPlanner.PlanAsync(direction, remote, remoteRoot, local, localRoot, exclusions, progress, cancellationToken),
-            _time);
+            _time)
+        {
+            BacksUp = _backups is { Limits.IsEnabled: true },
+        };
         sync.Start();
         bool confirmed;
         try
@@ -820,7 +867,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         // 確かめているあいだに切断した
         if (requests.Count == 0 || !ReferenceEquals(controller, _transferController))
             return;
-        controller.Enqueue(requests);
+        controller.Enqueue(InBatch(requests, upload ? "同期（パソコン → サーバー）" : "同期（サーバー → パソコン）"));
         var deletes = requests.Count(request => request.IsDelete);
         var transfers = requests.Count - deletes;
         var size = requests.Sum(request => Math.Max(0, request.ExpectedBytes ?? 0));
@@ -828,6 +875,154 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             ? deletes > 0 ? $"送る {transfers:N0} 件・消す {deletes:N0} 件" : $"送る {transfers:N0} 件"
             : $"受け取る {transfers:N0} 件";
         Log.Info($"同期（{(upload ? "パソコン → サーバー" : "サーバー → パソコン")}）: {what}を加えました（{DisplayText.Size(size)}）", _connected?.Name);
+    }
+
+    // 控えから元に戻す。サーバーのものは送信待ちで送り直す（いまの中身は、上書きの前に控えに回る）。
+    // パソコンのものは、いまのファイルを控えに回してから、その場で写し戻す
+    private async Task RestoreAsync(IReadOnlyList<BackupEntry> entries)
+    {
+        if (_backups is not { } backups || entries.Count == 0)
+            return;
+        var server = entries.Where(entry => entry.IsOnServer).ToList();
+        var local = entries.Where(entry => !entry.IsOnServer).ToList();
+        if (server.Count > 0
+            && (_connected is not { } connected || _transferController is null || server.Any(entry => entry.ConnectionId != connected.Profile.Id)))
+        {
+            Remote.ShowNotice("元に戻せませんでした", "この控えの接続先につないでから、もう一度選んでください");
+            return;
+        }
+        var missing = entries.Where(entry => !File.Exists(backups.GetFullPath(entry))).ToList();
+        if (missing.Count > 0)
+        {
+            backups.Delete(missing.Select(entry => entry.Id));
+            Remote.ShowNotice("控えのファイルが見つかりません", "消されたようです", string.Join("、", missing.Take(3).Select(entry => entry.OriginalPath)));
+            server.RemoveAll(missing.Contains);
+            local.RemoveAll(missing.Contains);
+            if (server.Count + local.Count == 0)
+                return;
+        }
+
+        IReadOnlyList<string> changed = server.Count > 0 ? await FindChangedSinceBackupAsync(server).ConfigureAwait(true) : [];
+        if (_services?.BackupDialogs is { } dialogs)
+        {
+            var names = server.Concat(local).Take(5).Select(entry => entry.OriginalPath).ToList();
+            if (!await dialogs.ConfirmRestoreAsync(names, server.Count + local.Count, changed).ConfigureAwait(true))
+                return;
+        }
+
+        var batch = BeginBatch("元に戻す");
+        if (server.Count > 0 && _transferController is { } controller)
+        {
+            try
+            {
+                // 送り終わるまでに控えが古いものから消されても困らないよう、写しを作ってから送る
+                var requests = await Task.Run(() => StageForRestore(backups, server, batch)).ConfigureAwait(true);
+                controller.Enqueue(requests);
+                Log.Info($"控えから元に戻します: {requests.Count:N0} 件（{DisplayText.Size(server.Sum(entry => entry.Size))}）", _connected?.Name);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Remote.ShowNotice("元に戻せませんでした", DisplayText.Describe(FailureClassifier.FromException(ex)));
+            }
+        }
+        foreach (var entry in local)
+            await RestoreOnComputerAsync(backups, entry, batch).ConfigureAwait(true);
+    }
+
+    // 控えを取ったあとにサーバーで変わったもの（上書きしたあとにまた変わった、消したあとに同じ名前ができた）を探す
+    private async Task<IReadOnlyList<string>> FindChangedSinceBackupAsync(IReadOnlyList<BackupEntry> entries)
+    {
+        const int MaxFolders = 30;
+        var changed = new List<string>();
+        foreach (var folder in entries.GroupBy(entry => RemotePath.GetParent(entry.OriginalPath)).Take(MaxFolders))
+        {
+            BrowseResult listing;
+            try
+            {
+                listing = await OnServerAsync(browser => browser.ListAsync(folder.Key, CancellationToken.None)).ConfigureAwait(true);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                continue;
+            }
+            if (!listing.Succeeded)
+                continue;
+            var current = new Dictionary<string, RemoteItem>(StringComparer.Ordinal);
+            foreach (var item in listing.Items)
+                current.TryAdd(item.Name, item);
+            foreach (var entry in folder)
+            {
+                current.TryGetValue(RemotePath.GetFileName(entry.OriginalPath), out var now);
+                var isChanged = entry.Kind == BackupKind.ServerDeleted
+                    ? now is not null
+                    : now is null || (entry.ReplacementSize is { } size && now.Size != size);
+                if (isChanged)
+                    changed.Add(entry.OriginalPath);
+            }
+        }
+        return changed;
+    }
+
+    // 控えの写しを一時フォルダに作り、元の場所へ送る依頼にする（写しの日時は元のファイルの日時にする）
+    private static List<TransferRequest> StageForRestore(BackupStore backups, IReadOnlyList<BackupEntry> entries, Guid? batch)
+    {
+        var folder = Path.Combine(RestoreStagingRoot, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(folder);
+        var requests = new List<TransferRequest>(entries.Count);
+        foreach (var entry in entries)
+        {
+            var copy = Path.Combine(folder, entry.Id.ToString("N"));
+            File.Copy(backups.GetFullPath(entry), copy, overwrite: true);
+            if (entry.OriginalModified is { } modified)
+                File.SetLastWriteTimeUtc(copy, modified.UtcDateTime);
+            requests.Add(new TransferRequest(TransferDirection.Upload, copy, entry.OriginalPath, ConflictPolicy.Overwrite, entry.Size, Batch: batch));
+        }
+        return requests;
+    }
+
+    private static string RestoreStagingRoot => Path.Combine(Path.GetTempPath(), "Hakobune", "restore");
+
+    // 元に戻すための写しのうち、古いもの（1 日より前）を片づける
+    private static void CleanRestoreStaging(DateTimeOffset now)
+    {
+        try
+        {
+            if (!Directory.Exists(RestoreStagingRoot))
+                return;
+            foreach (var folder in Directory.EnumerateDirectories(RestoreStagingRoot))
+            {
+                if (now.UtcDateTime - Directory.GetLastWriteTimeUtc(folder) > TimeSpan.FromDays(1))
+                    Directory.Delete(folder, recursive: true);
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private async Task RestoreOnComputerAsync(BackupStore backups, BackupEntry entry, Guid? batch)
+    {
+        var target = entry.OriginalPath;
+        try
+        {
+            await Task.Run(async () =>
+            {
+                // いまのファイルも控えに回してから、写し戻す
+                await backups.SaveLocalAsync(entry.ConnectionId, batch, target, entry.Size).ConfigureAwait(false);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(backups.GetFullPath(entry), target, overwrite: true);
+                if (entry.OriginalModified is { } modified)
+                    File.SetLastWriteTimeUtc(target, modified.UtcDateTime);
+            }).ConfigureAwait(true);
+            Log.Info($"控えから元に戻しました: {target}", _connected?.Name);
+            RequestRefresh(Local, target);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            var failure = FailureClassifier.FromException(ex);
+            Log.Error($"控えから元に戻せませんでした: {target}: {DisplayText.Describe(failure)}", _connected?.Name);
+            Local.ShowNotice("元に戻せませんでした", DisplayText.Describe(failure), target);
+        }
     }
 
     // 依頼を送信待ちに入れる。中を見られなかったフォルダがあれば、選んだ側に知らせる
@@ -838,8 +1033,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return 0;
         if (plan.Requests.Count > 0)
         {
-            controller.Enqueue(plan.Requests);
             var upload = plan.Requests[0].Direction == TransferDirection.Upload;
+            controller.Enqueue(InBatch(plan.Requests, upload ? "アップロード" : "ダウンロード"));
             var size = plan.Requests.Sum(request => Math.Max(0, request.ExpectedBytes ?? 0));
             var excluded = plan.ExcludedCount > 0 ? $"。送らないファイル {plan.ExcludedCount:N0} 件を除きました" : "";
             Log.Info(
@@ -933,6 +1128,57 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         return Task.Run(() => operation(browser));
     }
 
+    private Task<T> OnServerAsync<T>(Func<RemoteBrowser, Task<T>> operation)
+    {
+        var browser = _session?.Browser ?? throw new InvalidOperationException("接続していません。");
+        return Task.Run(() => operation(browser));
+    }
+
+    // 控えをまとめる操作を始める（控えを取らないときは null）
+    private Guid? BeginBatch(string label) =>
+        _backups is { Limits.IsEnabled: true } backups && _connected is { } connected ? backups.BeginBatch(connected.Profile.Id, label) : null;
+
+    // 依頼に、控えをまとめる操作を付ける
+    private IReadOnlyList<TransferRequest> InBatch(IReadOnlyList<TransferRequest> requests, string label) =>
+        BeginBatch(label) is { } batch ? [.. requests.Select(request => request with { Batch = batch })] : requests;
+
+    /// <summary>サーバーのものを消す前に、控えを取るか。</summary>
+    public bool BacksUpBeforeDelete => _backups is { Limits.IsEnabled: true } && _connected is not null;
+
+    // サーバーのものを消す前に、画面用の接続で控えを取る。返すのはログに添える一言。取れなければ例外（そのときは消さない）
+    private async Task<string?> BackUpBeforeDeleteAsync(FileEntry entry, Guid? batch)
+    {
+        if (_backups is not { Limits.IsEnabled: true } backups || _connected is not { } connected || entry.Type == FileEntryType.Link)
+            return null;
+        var connectionId = connected.Profile.Id;
+        var path = entry.FullPath;
+        if (entry.Type == FileEntryType.Directory)
+        {
+            return await OnServerAsync(browser => backups.SaveServerFolderAsync(
+                connectionId,
+                batch,
+                path,
+                async (folder, token) =>
+                {
+                    var listing = await browser.ListAsync(folder, token).ConfigureAwait(false);
+                    return listing.Failure is { } failure ? throw new RemoteOperationException(failure) : listing.Items;
+                },
+                (file, stream, token) => browser.DownloadAsync(file, stream, token),
+                CancellationToken.None)).ConfigureAwait(true);
+        }
+        var result = await OnServerAsync(browser => backups.SaveAsync(
+            connectionId,
+            batch,
+            BackupKind.ServerDeleted,
+            path,
+            entry.Size,
+            entry.Modified,
+            null,
+            (stream, token) => browser.DownloadAsync(path, stream, token),
+            CancellationToken.None)).ConfigureAwait(true);
+        return result.Note;
+    }
+
     private async Task NewFolderAsync(FilePaneViewModel pane)
     {
         if (_services?.FileDialogs is not { } dialogs || !CanCreateFolder(pane))
@@ -1009,24 +1255,43 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         var rows = pane.SelectedRows.ToList();
         var remote = pane.Kind == PaneKind.Remote;
-        if (!await dialogs.ConfirmDeleteAsync([.. rows.Select(row => row.Name)], remote, !remote && LocalFiles.UsesRecycleBin).ConfigureAwait(true))
+        // サーバーは控えを取るとき、パソコンはごみ箱に移すとき、元に戻せる
+        var recoverable = remote ? BacksUpBeforeDelete : LocalFiles.UsesRecycleBin;
+        if (!await dialogs.ConfirmDeleteAsync([.. rows.Select(row => row.Name)], remote, recoverable).ConfigureAwait(true))
             return;
 
         var failed = new List<string>();
         TransferFailure? firstFailure = null;
+        var backupFailed = false;
         if (remote)
         {
+            var batch = BeginBatch("削除");
             // 1 つ失敗しても、ほかは消す
             foreach (var row in rows)
             {
                 var path = row.Entry.FullPath;
+                string? note;
+                try
+                {
+                    note = await BackUpBeforeDeleteAsync(row.Entry, batch).ConfigureAwait(true);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // 控えを取れなければ、消さない
+                    failed.Add(row.Name);
+                    var failure = FailureClassifier.FromException(ex);
+                    firstFailure ??= failure;
+                    backupFailed = true;
+                    Log.Error($"控えを取れなかったので、消しませんでした: {path}: {DisplayText.Describe(failure)}", SourceOf(pane));
+                    continue;
+                }
                 try
                 {
                     if (row.Entry.Type == FileEntryType.Directory)
                         await OnServerAsync(browser => browser.DeleteDirectoryAsync(path, CancellationToken.None)).ConfigureAwait(true);
                     else
                         await OnServerAsync(browser => browser.DeleteFileAsync(path, CancellationToken.None)).ConfigureAwait(true);
-                    Log.Info($"削除しました: {path}", SourceOf(pane));
+                    Log.Info($"削除しました: {path}{(note is null ? "" : $"（{note}）")}", SourceOf(pane));
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -1058,10 +1323,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         await pane.RefreshAsync().ConfigureAwait(true);
         if (firstFailure is not null)
         {
+            var names = string.Join("、", failed.Take(3)) + (failed.Count > 3 ? " ほか" : "");
             pane.ShowNotice(
                 failed.Count == rows.Count ? "削除できませんでした" : "一部を削除できませんでした",
-                DisplayText.Describe(firstFailure),
-                string.Join("、", failed.Take(3)) + (failed.Count > 3 ? " ほか" : ""));
+                backupFailed ? $"控えを取れなかったので、消していません（{DisplayText.Describe(firstFailure)}）" : DisplayText.Describe(firstFailure),
+                backupFailed ? $"{names}。設定の「控え」を切ると、控えを取らずに消せます" : names);
         }
     }
 

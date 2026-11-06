@@ -55,12 +55,14 @@ internal sealed class TransferLogWriter
                     _completed++;
                     _bytes += Math.Max(0, item.TotalBytes);
                 }
+                // 上書き・削除の前に控えを取ったら、そう添える
+                var backup = string.IsNullOrEmpty(item.Note) ? null : item.Note;
                 if (item.IsDelete)
-                    _log.Success($"サーバーから消しました: {target}", _source);
+                    _log.Success($"サーバーから消しました: {target}{(backup is null ? "" : $"（{backup}）")}", _source);
                 else if (item.IsFolder)
                     _log.Success($"フォルダを作りました: {target}", _source);
                 else
-                    _log.Success($"{(upload ? "送りました" : "受け取りました")}: {target}（{DisplayText.Size(Math.Max(0, item.TotalBytes))}）", _source);
+                    _log.Success($"{(upload ? "送りました" : "受け取りました")}: {target}（{DisplayText.Size(Math.Max(0, item.TotalBytes))}{(backup is null ? "" : "・" + backup)}）", _source);
                 break;
             case TransferState.Failed:
                 lock (_gate)

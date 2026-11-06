@@ -1,5 +1,6 @@
 using Hakobune.Core.Connections;
 using Hakobune.Core.Transfers;
+using Hakobune.Presentation.Backups;
 using Hakobune.Presentation.Connections;
 using Hakobune.Presentation.Files;
 using Hakobune.Presentation.Settings;
@@ -63,6 +64,9 @@ public enum DemoDialog
 
     /// <summary>同期の確認で、サーバーのほうが新しいものも送り、サーバーにだけあるものを消すと選んだところ。</summary>
     SyncDelete,
+
+    /// <summary>控えから元に戻すときの確認（1 件は、控えを取ったあとにも変わっている）。</summary>
+    Restore,
 }
 
 /// <summary>見本のダイアログに出す中身。</summary>
@@ -119,7 +123,10 @@ public static class DemoDialogs
     public static SyncViewModel CreateSync()
     {
         var plan = SyncPlan;
-        var sync = new SyncViewModel(SyncDirection.Upload, plan.SourceRoot, $"{Profile.Host} {plan.TargetRoot}", (_, _) => Task.FromResult(plan));
+        var sync = new SyncViewModel(SyncDirection.Upload, plan.SourceRoot, $"{Profile.Host} {plan.TargetRoot}", (_, _) => Task.FromResult(plan))
+        {
+            BacksUp = true,
+        };
         sync.Start();
         return sync;
     }
@@ -164,7 +171,8 @@ public static class DemoDialogs
         ITransferDialogs? transferDialogs = null,
         ISettingsDialogs? settingsDialogs = null,
         MainViewModel? main = null,
-        ISyncDialogs? syncDialogs = null)
+        ISyncDialogs? syncDialogs = null,
+        IBackupDialogs? backupDialogs = null)
     {
         ArgumentNullException.ThrowIfNull(prompts);
         ArgumentNullException.ThrowIfNull(dialogs);
@@ -174,7 +182,7 @@ public static class DemoDialogs
                 await fileDialogs.AskNameAsync("名前の変更", "about.html", "変更", name => FileNames.Validate(name, PaneKind.Remote)).ConfigureAwait(true);
                 break;
             case DemoDialog.DeleteFiles when fileDialogs is not null:
-                await fileDialogs.ConfirmDeleteAsync(["index.html", "about.html", "images"], remote: true, recycleBin: false).ConfigureAwait(true);
+                await fileDialogs.ConfirmDeleteAsync(["index.html", "about.html", "images"], remote: true, recoverable: true).ConfigureAwait(true);
                 break;
             case DemoDialog.Permissions when fileDialogs is not null:
                 await fileDialogs.AskPermissionsAsync(["index.html"], Convert.ToInt32("644", 8)).ConfigureAwait(true);
@@ -202,6 +210,12 @@ public static class DemoDialogs
                 sync.IncludeTargetNewer = true;
                 sync.DeleteOnlyOnTarget = true;
                 await syncDialogs.ReviewSyncAsync(sync).ConfigureAwait(true);
+                break;
+            case DemoDialog.Restore when backupDialogs is not null:
+                await backupDialogs.ConfirmRestoreAsync(
+                    ["/var/www/html/index.html", "/var/www/html/css/site.css", "/var/www/html/campaign-2025/index.html"],
+                    5,
+                    ["/var/www/html/index.html"]).ConfigureAwait(true);
                 break;
             case DemoDialog.NewConnection:
                 await dialogs.EditAsync(null, hasSavedPassword: false).ConfigureAwait(true);

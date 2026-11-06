@@ -18,6 +18,8 @@ public sealed partial class SettingsView : UserControl
 
         // 選択肢は x:Bind の SelectedIndex より先に入れておく
         ThemeBox.ItemsSource = viewModel.ThemeNames;
+        BackupKeepBox.ItemsSource = viewModel.BackupKeepNames;
+        BackupSizeBox.ItemsSource = viewModel.BackupSizeNames;
     }
 
     public SettingsViewModel ViewModel { get; }

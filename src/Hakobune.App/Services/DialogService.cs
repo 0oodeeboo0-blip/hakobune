@@ -4,6 +4,7 @@ using Hakobune.App.Views;
 using Hakobune.Core.Connections;
 using Hakobune.Core.Transfers;
 using Hakobune.Core.Remote;
+using Hakobune.Presentation.Backups;
 using Hakobune.Presentation.Connections;
 using Hakobune.Presentation.Files;
 using Hakobune.Presentation.Settings;
@@ -21,7 +22,7 @@ namespace Hakobune.App.Services;
 /// 接続のときの質問（パスワード、サーバーの鍵、証明書）と、接続先の作成・編集を、ダイアログで聞く。
 /// どのスレッドから呼んでもよい（画面のスレッドに頼んで出す）。
 /// </summary>
-internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, ITransferDialogs, IFileDialogs, ISettingsDialogs, ISyncDialogs
+internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, ITransferDialogs, IFileDialogs, ISettingsDialogs, ISyncDialogs, IBackupDialogs
 {
     private readonly DispatcherQueue _dispatcher;
     private readonly Func<XamlRoot?> _xamlRoot;
@@ -323,7 +324,7 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
             return await ShowAsync(dialog).ConfigureAwait(true) == ContentDialogResult.Primary ? box.Text : null;
         });
 
-    public Task<bool> ConfirmDeleteAsync(IReadOnlyList<string> names, bool remote, bool recycleBin) =>
+    public Task<bool> ConfirmDeleteAsync(IReadOnlyList<string> names, bool remote, bool recoverable) =>
         OnUiThreadAsync(async () =>
         {
             var what = names.Count == 1
@@ -331,10 +332,12 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
                 : $"{names.Count.ToString("N0", CultureInfo.CurrentCulture)} 個の項目（{string.Join("、", names.Take(3))}{(names.Count > 3 ? " ほか" : "")}）";
             var panel = new StackPanel { Spacing = 8, MaxWidth = 460 };
             panel.Children.Add(Paragraph($"{what}を削除しますか？"));
-            if (remote)
+            if (remote && recoverable)
+                panel.Children.Add(Paragraph("フォルダは中身ごと消えます。消す前に控えを取るので、下の「控え」から元に戻せます（100 MB より大きいファイルは除きます）。"));
+            else if (remote)
                 panel.Children.Add(Warning("サーバーから消したものは、元に戻せません。フォルダは中身ごと消えます。"));
             else
-                panel.Children.Add(Paragraph(recycleBin ? "ごみ箱に移します。" : "元に戻せません。"));
+                panel.Children.Add(Paragraph(recoverable ? "ごみ箱に移します。" : "元に戻せません。"));
 
             var dialog = new ContentDialog
             {
@@ -343,7 +346,7 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
                 PrimaryButtonText = "削除",
                 CloseButtonText = "やめる",
                 // 元に戻せないときは、うっかり Enter で消さないようにする
-                DefaultButton = remote || !recycleBin ? ContentDialogButton.Close : ContentDialogButton.Primary,
+                DefaultButton = remote || !recoverable ? ContentDialogButton.Close : ContentDialogButton.Primary,
             };
             return await ShowAsync(dialog).ConfigureAwait(true) == ContentDialogResult.Primary;
         });
@@ -567,6 +570,34 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
             {
                 sync.PropertyChanged -= onChanged;
             }
+        });
+
+    public Task<bool> ConfirmRestoreAsync(IReadOnlyList<string> names, int count, IReadOnlyList<string> changed) =>
+        OnUiThreadAsync(async () =>
+        {
+            var panel = new StackPanel { Spacing = 12, MaxWidth = 480 };
+            panel.Children.Add(Paragraph(count > 1
+                ? $"{count.ToString("N0", CultureInfo.CurrentCulture)} 件を、控えを取ったときの中身に戻します。"
+                : "控えを取ったときの中身に戻します。"));
+            panel.Children.Add(NameList(names, count));
+            if (changed.Count > 0)
+            {
+                panel.Children.Add(Warning(changed.Count == 1
+                    ? "次のものは、控えを取ったあとにもサーバーで変わっています。"
+                    : $"次の {changed.Count.ToString("N0", CultureInfo.CurrentCulture)} 件は、控えを取ったあとにもサーバーで変わっています。"));
+                panel.Children.Add(NameList([.. changed.Take(3)], changed.Count));
+            }
+            panel.Children.Add(Paragraph("いまの中身も控えに残すので、あとでまた戻せます。"));
+            var dialog = new ContentDialog
+            {
+                Title = "元に戻す",
+                Content = panel,
+                PrimaryButtonText = count > 1 ? $"{count.ToString("N0", CultureInfo.CurrentCulture)} 件を元に戻す" : "元に戻す",
+                CloseButtonText = "やめる",
+                // そのあとに変わったものがあるときは、うっかり Enter で戻さないようにする
+                DefaultButton = changed.Count > 0 ? ContentDialogButton.Close : ContentDialogButton.Primary,
+            };
+            return await ShowAsync(dialog).ConfigureAwait(true) == ContentDialogResult.Primary;
         });
 
     private static TextBlock Paragraph(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap };

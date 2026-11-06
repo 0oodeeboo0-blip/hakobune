@@ -27,6 +27,10 @@ public partial class App : Application
     internal static string DataDirectory =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Hakobune");
 
+    /// <summary>上書き・削除の前の控えの置き場（大きくなるので、ローミングしない %LOCALAPPDATA%\Hakobune\backups）。</summary>
+    internal static string BackupDirectory =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hakobune", "backups");
+
     protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
         try
@@ -43,7 +47,8 @@ public partial class App : Application
             else
             {
                 var services = new AppServices(
-                    DataDirectory, new CredentialStore(), dialogs, dialogs, dialogs, dialogs, new RecycleBinFileOperations(), dialogs, dialogs);
+                    DataDirectory, new CredentialStore(), dialogs, dialogs, dialogs, dialogs, new RecycleBinFileOperations(), dialogs, dialogs,
+                    BackupDirectory: BackupDirectory, BackupDialogs: dialogs);
                 var settings = await AppSettings.LoadAsync(services.SettingsFile);
                 viewModel = await MainViewModel.CreateAsync(services, null, settings);
             }
@@ -83,10 +88,12 @@ public partial class App : Application
     {
         if (Options.ShowLog)
             viewModel.ShowLogCommand.Execute(null);
+        if (Options.ShowBackups)
+            viewModel.ShowBackupsCommand.Execute(null);
         if (Options.Dialog is { } dialog)
         {
             // ダイアログは閉じるまで終わらないので待たない。出るまで少し待つ。
-            _ = DemoDialogs.ShowAsync(dialog, dialogs, dialogs, dialogs, dialogs, dialogs, viewModel, dialogs);
+            _ = DemoDialogs.ShowAsync(dialog, dialogs, dialogs, dialogs, dialogs, dialogs, viewModel, dialogs, dialogs);
             return Task.Delay(TimeSpan.FromSeconds(1));
         }
         if (Options.ConnectUrl is { } url)

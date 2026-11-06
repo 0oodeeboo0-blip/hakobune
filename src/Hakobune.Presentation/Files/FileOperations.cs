@@ -59,8 +59,10 @@ public interface IFileDialogs
     /// </summary>
     Task<string?> AskNameAsync(string title, string initialName, string primaryButtonText, Func<string, string?> validate);
 
-    /// <summary>消してよいか聞く。</summary>
-    Task<bool> ConfirmDeleteAsync(IReadOnlyList<string> names, bool remote, bool recycleBin);
+    /// <summary>
+    /// 消してよいか聞く。<paramref name="recoverable"/> は元に戻せるか（パソコンはごみ箱に移すとき、サーバーは控えを取るとき）。
+    /// </summary>
+    Task<bool> ConfirmDeleteAsync(IReadOnlyList<string> names, bool remote, bool recoverable);
 
     /// <summary>属性（パーミッション）を聞く。<paramref name="currentMode"/> がわかればそれを最初に出す。やめたら null。</summary>
     Task<int?> AskPermissionsAsync(IReadOnlyList<string> names, int? currentMode);

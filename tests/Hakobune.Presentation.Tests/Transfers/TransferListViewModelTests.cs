@@ -115,6 +115,29 @@ public class TransferListViewModelTests
     }
 
     [Fact]
+    public void The_backups_tab_replaces_the_transfer_list_until_a_tab_is_chosen()
+    {
+        var (list, _, _) = Create();
+        list.IsExpanded = false;
+
+        list.SelectBackups();
+        Assert.True(list.IsExpanded);
+        Assert.True(list.IsBackupsSelected);
+        Assert.False(list.IsLogSelected);
+        Assert.DoesNotContain(list.Tabs, tab => tab.IsSelected);
+
+        list.SelectLog();
+        Assert.False(list.IsBackupsSelected);
+        Assert.True(list.IsLogSelected);
+
+        list.SelectBackups();
+        list.SelectTab(TransferTab.Done);
+        Assert.False(list.IsBackupsSelected);
+        Assert.False(list.IsLogSelected);
+        Assert.True(list.Tabs.Single(tab => tab.Tab == TransferTab.Done).IsSelected);
+    }
+
+    [Fact]
     public void Deleting_on_the_server_reads_as_a_delete()
     {
         var (list, source, _) = Create();

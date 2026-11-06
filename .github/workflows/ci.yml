@@ -246,6 +246,7 @@ jobs:
             @{ Name = 'main-dark-stale'; Args = '--demo --scenario stale --theme dark' },
             @{ Name = 'main-light-stale'; Args = '--demo --scenario stale --theme light' },
             @{ Name = 'main-log-dark'; Args = '--demo --log --theme dark' },
+            @{ Name = 'main-backups'; Args = '--demo --backups --theme light --size 1280x900' },
             @{ Name = 'main-light-refreshed'; Args = '--demo --scenario refreshed --theme light --size 1280x900' },
             @{ Name = 'main-dark-refreshed'; Args = '--demo --scenario refreshed --theme dark --size 1280x900' },
             @{ Name = 'dialog-new-connection'; Args = '--dialog new --theme light' },
@@ -265,7 +266,8 @@ jobs:
             @{ Name = 'dialog-settings-dark'; Args = '--dialog settings --theme dark' },
             @{ Name = 'dialog-settings-exclusions'; Args = '--dialog settings-exclusions --theme light --size 1280x900' },
             @{ Name = 'dialog-sync'; Args = '--dialog sync --theme light --size 1280x1000' },
-            @{ Name = 'dialog-sync-dark'; Args = '--dialog sync-delete --theme dark --size 1280x1000' }
+            @{ Name = 'dialog-sync-dark'; Args = '--dialog sync-delete --theme dark --size 1280x1000' },
+            @{ Name = 'dialog-restore'; Args = '--dialog restore --theme light' }
           )
           $failed = $false
           foreach ($shot in $shots) {

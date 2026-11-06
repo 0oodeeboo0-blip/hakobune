@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Text;
+using Hakobune.Presentation.Backups;
 using Hakobune.Presentation.Logging;
 using Hakobune.Presentation.Transfers;
 using Microsoft.UI;
@@ -27,6 +29,12 @@ public sealed partial class TransferPanelView : UserControl
         typeof(TransferPanelView),
         new PropertyMetadata(null, OnLogChanged));
 
+    public static readonly DependencyProperty BackupsProperty = DependencyProperty.Register(
+        nameof(Backups),
+        typeof(BackupListViewModel),
+        typeof(TransferPanelView),
+        new PropertyMetadata(null, OnBackupsChanged));
+
     private ScrollViewer? _logScroller;
 
     public TransferPanelView()
@@ -45,6 +53,32 @@ public sealed partial class TransferPanelView : UserControl
     {
         get => (LogViewModel?)GetValue(LogProperty);
         set => SetValue(LogProperty, value);
+    }
+
+    /// <summary>下の「控え」。</summary>
+    public BackupListViewModel? Backups
+    {
+        get => (BackupListViewModel?)GetValue(BackupsProperty);
+        set => SetValue(BackupsProperty, value);
+    }
+
+    private static void OnBackupsChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) => ((TransferPanelView)d).Bindings.Update();
+
+    private void OnBackupsTabClick(object sender, RoutedEventArgs e) => ViewModel?.SelectBackups();
+
+    // 控えの置き場をエクスプローラーで開く（まだ無ければ作る）
+    private void OnOpenBackupFolderClick(object sender, RoutedEventArgs e)
+    {
+        if (Backups?.FolderPath is not { } folder)
+            return;
+        try
+        {
+            Directory.CreateDirectory(folder);
+            using var _ = Process.Start(new ProcessStartInfo(folder) { UseShellExecute = true });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+        }
     }
 
     private static void OnViewModelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)

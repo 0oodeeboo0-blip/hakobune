@@ -1,3 +1,5 @@
+using System.Text;
+using Hakobune.Core.Backups;
 using Hakobune.Core.Browsing;
 using Hakobune.Core.Remote;
 using Hakobune.Core.Tests.Integration;
@@ -45,9 +47,10 @@ public sealed class SyncIntegrationTests : IDisposable
     private static string[] Describe(SyncPlan plan) =>
         [.. plan.Items.Select(item => $"{item.Change} {item.RelativePath}").Order(StringComparer.Ordinal)];
 
-    private static async Task RunAsync(IRemoteSessionFactory factory, IReadOnlyList<TransferRequest> requests, CancellationToken cancellationToken)
+    private static async Task RunAsync(
+        IRemoteSessionFactory factory, IReadOnlyList<TransferRequest> requests, CancellationToken cancellationToken, ITransferBackups? backups = null)
     {
-        var scheduler = new TransferScheduler(factory, new TransferOptions { MaxConcurrency = 2 });
+        var scheduler = new TransferScheduler(factory, new TransferOptions { MaxConcurrency = 2, Backups = backups });
         scheduler.Enqueue(requests);
         var result = await scheduler.RunAsync(cancellationToken);
         Assert.Equal(TransferRunOutcome.Finished, result.Outcome);
@@ -90,6 +93,8 @@ public sealed class SyncIntegrationTests : IDisposable
         var site = Path.Combine(_root, "site");
         Directory.CreateDirectory(Path.Combine(site, "empty"));
         var exclusions = new ExclusionRules(["Thumbs.db"]);
+        var store = new BackupStore(Path.Combine(_root, "backups"));
+        var backups = new ConnectionBackups(store, Guid.NewGuid());
 
         var local = new LocalFileSource(showComputerRoot: false);
         await using var browser = new RemoteBrowser(server.Factory);
@@ -118,7 +123,17 @@ public sealed class SyncIntegrationTests : IDisposable
         Directory.Delete(Path.Combine(site, "old-folder"), recursive: true);
         plan = await PlanUploadAsync();
         Assert.Equal(new[] { "Changed index.html", "New news.html", "OnlyOnTarget old-folder", "OnlyOnTarget old.txt" }, Describe(plan));
-        await RunAsync(server.Factory, SyncPlanner.ToRequests(plan, includeTargetNewer: false, deleteOnlyOnTarget: true), cancellationToken);
+        await RunAsync(server.Factory, SyncPlanner.ToRequests(plan, includeTargetNewer: false, deleteOnlyOnTarget: true), cancellationToken, backups);
+
+        // 上書き・削除する前のサーバーの中身が、控えに残っている（フォルダは中身ごと）
+        var kept = store.GetEntries(backups.ConnectionId);
+        string Kept(string relative) =>
+            File.ReadAllText(store.GetFullPath(kept.Single(entry => entry.OriginalPath.EndsWith("/" + relative, StringComparison.Ordinal))));
+        Assert.Equal(4, kept.Count);
+        Assert.Equal("<h1>こんにちは</h1>", Kept("index.html"));
+        Assert.Equal("old", Kept("old.txt"));
+        Assert.Equal("a", Kept("old-folder/a.txt"));
+        Assert.Equal("b", Kept("old-folder/sub/b.txt"));
 
         plan = await PlanUploadAsync();
         Assert.Equal(Array.Empty<string>(), Describe(plan));
@@ -141,10 +156,22 @@ public sealed class SyncIntegrationTests : IDisposable
         Assert.Equal(Array.Empty<string>(), Describe(plan));
         Assert.Equal(4, plan.SameCount);
 
+        // 控えから元に戻す（控えのファイルを、元の場所へ送り直す）
+        var original = kept.Single(entry => entry.OriginalPath.EndsWith("/index.html", StringComparison.Ordinal));
+        await RunAsync(
+            server.Factory,
+            [new TransferRequest(TransferDirection.Upload, store.GetFullPath(original), original.OriginalPath)],
+            cancellationToken,
+            backups);
         await using (var session = server.Factory.Create())
         {
             await session.ConnectAsync(cancellationToken);
+            using var restored = new MemoryStream();
+            await session.DownloadAsync(original.OriginalPath, restored, 0, null, cancellationToken);
+            Assert.Equal("<h1>こんにちは</h1>", Encoding.UTF8.GetString(restored.ToArray()));
             await session.DeleteDirectoryAsync(remoteRoot, cancellationToken);
         }
+        // 戻す前の中身も、また控えに残る
+        Assert.Equal(5, store.GetEntries(backups.ConnectionId).Count);
     }
 }

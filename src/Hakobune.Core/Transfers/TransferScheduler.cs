@@ -116,7 +116,8 @@ public sealed class TransferScheduler : ITransferSink
                 item.SizeVerified,
                 item.FinishedAt,
                 item.Request.IsFolder,
-                item.Request.IsDelete)).ToList();
+                item.Request.IsDelete,
+                item.Request.Batch)).ToList();
         }
     }
 
@@ -135,7 +136,8 @@ public sealed class TransferScheduler : ITransferSink
             foreach (var entry in saved)
             {
                 var request = new TransferRequest(
-                    entry.Direction, entry.LocalPath, entry.RemotePath, entry.OnConflict, IsFolder: entry.IsFolder, IsDelete: entry.IsDelete);
+                    entry.Direction, entry.LocalPath, entry.RemotePath, entry.OnConflict,
+                    IsFolder: entry.IsFolder, IsDelete: entry.IsDelete, Batch: entry.Batch);
                 var item = new TransferItem(_nextSequence++, request)
                 {
                     Id = entry.Id,

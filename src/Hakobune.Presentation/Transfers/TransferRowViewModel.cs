@@ -238,6 +238,9 @@ public sealed class TransferRowViewModel : ObservableObject
             parts.Add("フォルダを作成");
         if (snapshot.SizeVerified)
             parts.Add("サイズ照合OK");
+        // 上書き・削除の前に控えを取ったか（「控えあり」など）
+        if (snapshot.Note is { Length: > 0 } note)
+            parts.Add(note);
         if (snapshot.FailedAttempts > 0)
             parts.Add($"{snapshot.FailedAttempts + 1}回目で成功");
         if (snapshot.FinishedAt is { } finishedAt)

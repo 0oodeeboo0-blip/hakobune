@@ -20,6 +20,7 @@ public sealed partial class MainView : UserControl
         RemotePane.ViewModel = viewModel.Remote;
         TransferPanel.ViewModel = viewModel.Transfers;
         TransferPanel.Log = viewModel.LogView;
+        TransferPanel.Backups = viewModel.BackupList;
         TransferPanel.FilesDropped += OnTransferPanelFilesDropped;
         TransferSplitter.Dragged += OnTransferSplitterDragged;
         ContentArea.SizeChanged += (_, _) => ClampTransferPanel();

@@ -1,4 +1,5 @@
 using System.Text;
+using Hakobune.Core.Backups;
 using Hakobune.Core.Connections;
 using Hakobune.Core.Remote;
 using Hakobune.Core.Transfers;
@@ -17,6 +18,7 @@ public sealed class MainViewModelTransferTests : IDisposable
     private readonly ScriptedDialogs _dialogs = new();
     private readonly ScriptedTransferDialogs _transferDialogs = new();
     private readonly ScriptedSyncDialogs _syncDialogs = new();
+    private readonly ScriptedBackupDialogs _backupDialogs = new();
     private readonly MemorySecretStore _secrets = new();
     private readonly ConnectionProfile _profile = new() { Name = "ショップ", Host = "example.com", UserName = "web" };
 
@@ -51,7 +53,8 @@ public sealed class MainViewModelTransferTests : IDisposable
 
     private async Task<MainViewModel> ConnectAsync()
     {
-        var services = new AppServices(DataDirectory, _secrets, _prompts, _dialogs, _transferDialogs, SyncDialogs: _syncDialogs);
+        var services = new AppServices(
+            DataDirectory, _secrets, _prompts, _dialogs, _transferDialogs, SyncDialogs: _syncDialogs, BackupDialogs: _backupDialogs);
         var connector = new ConnectionService(TrustStore.InMemory(), _secrets, _prompts, _server.Builder);
         var main = new MainViewModel(
             new FilePaneViewModel(PaneKind.Local),
@@ -145,6 +148,58 @@ public sealed class MainViewModelTransferTests : IDisposable
         Assert.Equal("news", File.ReadAllText(Path.Combine(LocalFolder, "news.txt")));
         Assert.Equal("mine", File.ReadAllText(Path.Combine(LocalFolder, "mine.txt")));
         Assert.Equal(1, main.Transfers.TotalCount);
+    }
+
+    [Fact]
+    public async Task An_overwritten_server_file_can_be_restored_from_its_backup()
+    {
+        WriteLocal("notes.txt", "new memo");
+        using var main = await ConnectAsync();
+        await main.Local.RefreshAsync();
+        main.Local.UpdateSelection([main.Local.Items.Single(row => row.Name == "notes.txt")]);
+
+        await main.UploadCommand.ExecuteAsync(null);
+        await WaitForAsync(() => main.PendingTransferCount == 0 && Encoding.UTF8.GetString(_server.Files["/home/web/notes.txt"]) == "new memo");
+
+        // 上書きする前のサーバーの中身が、控えに残っている
+        var backups = main.Backups!;
+        var entry = Assert.Single(backups.GetEntries(_profile.Id));
+        Assert.Equal(BackupKind.ServerOverwritten, entry.Kind);
+        Assert.Equal("memo", await File.ReadAllTextAsync(backups.GetFullPath(entry), TestContext.Current.CancellationToken));
+        Assert.Equal(8L, entry.ReplacementSize);
+        var group = Assert.Single(main.BackupList.Groups);
+        Assert.Equal("アップロード", group.Title);
+
+        group.RestoreAllCommand.Execute(null);
+        await WaitForAsync(() => main.PendingTransferCount == 0 && Encoding.UTF8.GetString(_server.Files["/home/web/notes.txt"]) == "memo");
+
+        var question = Assert.Single(_backupDialogs.Questions);
+        Assert.Equal(1, question.Count);
+        // サーバーの一覧の大きさ（4）が、上書きしたときの大きさ（8）と違うので、そのあとにも変わったと知らせる
+        Assert.Equal(new[] { "/home/web/notes.txt" }, question.Changed.ToArray());
+        // 戻す前の中身（new memo）も、控えに残る
+        var restored = backups.GetEntries(_profile.Id);
+        Assert.Equal(2, restored.Count);
+        Assert.Equal("new memo", await File.ReadAllTextAsync(backups.GetFullPath(restored[0]), TestContext.Current.CancellationToken));
+        Assert.Equal("元に戻す", backups.GetBatch(restored[0].Batch)?.Label);
+    }
+
+    [Fact]
+    public async Task Declining_the_restore_question_changes_nothing()
+    {
+        WriteLocal("notes.txt", "new memo");
+        using var main = await ConnectAsync();
+        await main.Local.RefreshAsync();
+        main.Local.UpdateSelection([main.Local.Items.Single(row => row.Name == "notes.txt")]);
+        await main.UploadCommand.ExecuteAsync(null);
+        await WaitForAsync(() => main.PendingTransferCount == 0 && Encoding.UTF8.GetString(_server.Files["/home/web/notes.txt"]) == "new memo");
+        _backupDialogs.Answer = false;
+
+        main.BackupList.Groups[0].RestoreAllCommand.Execute(null);
+        await WaitForAsync(() => _backupDialogs.Questions.Count == 1);
+
+        Assert.Equal(1, main.Transfers.TotalCount);
+        Assert.Equal("new memo", Encoding.UTF8.GetString(_server.Files["/home/web/notes.txt"]));
     }
 
     [Fact]

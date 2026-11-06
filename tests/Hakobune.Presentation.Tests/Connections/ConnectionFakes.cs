@@ -4,6 +4,7 @@ using Hakobune.Core.Remote;
 using Hakobune.Core.Remote.Ftp;
 using Hakobune.Core.Remote.Sftp;
 using Hakobune.Core.Transfers;
+using Hakobune.Presentation.Backups;
 using Hakobune.Presentation.Connections;
 using Hakobune.Presentation.Files;
 using Hakobune.Presentation.Transfers;
@@ -313,6 +314,20 @@ internal sealed class ScriptedSyncDialogs : ISyncDialogs
     }
 }
 
+/// <summary>答えを決めておける、控えから元に戻すときの質問。</summary>
+internal sealed class ScriptedBackupDialogs : IBackupDialogs
+{
+    public bool Answer { get; set; } = true;
+
+    public List<(IReadOnlyList<string> Names, int Count, IReadOnlyList<string> Changed)> Questions { get; } = [];
+
+    public Task<bool> ConfirmRestoreAsync(IReadOnlyList<string> names, int count, IReadOnlyList<string> changed)
+    {
+        Questions.Add((names, count, changed));
+        return Task.FromResult(Answer);
+    }
+}
+
 /// <summary>答えを決めておける、ファイルの操作のときの質問。</summary>
 internal sealed class ScriptedFileDialogs : IFileDialogs
 {
@@ -324,7 +339,7 @@ internal sealed class ScriptedFileDialogs : IFileDialogs
 
     public List<(string Title, string Initial, string? ProblemForAnswer)> NameQuestions { get; } = [];
 
-    public List<(IReadOnlyList<string> Names, bool Remote, bool RecycleBin)> DeleteQuestions { get; } = [];
+    public List<(IReadOnlyList<string> Names, bool Remote, bool Recoverable)> DeleteQuestions { get; } = [];
 
     public List<int?> PermissionQuestions { get; } = [];
 
@@ -336,9 +351,9 @@ internal sealed class ScriptedFileDialogs : IFileDialogs
         return Task.FromResult(answer is not null && validate(answer) is null ? answer : null);
     }
 
-    public Task<bool> ConfirmDeleteAsync(IReadOnlyList<string> names, bool remote, bool recycleBin)
+    public Task<bool> ConfirmDeleteAsync(IReadOnlyList<string> names, bool remote, bool recoverable)
     {
-        DeleteQuestions.Add((names, remote, recycleBin));
+        DeleteQuestions.Add((names, remote, recoverable));
         return Task.FromResult(ConfirmDelete);
     }
 
