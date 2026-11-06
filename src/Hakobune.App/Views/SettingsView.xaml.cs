@@ -3,8 +3,6 @@ using Hakobune.Presentation.Settings;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
-using Windows.Foundation;
 using Windows.System;
 
 namespace Hakobune.App.Views;
@@ -20,42 +18,22 @@ public sealed partial class SettingsView : UserControl
 
         // 選択肢は x:Bind の SelectedIndex より先に入れておく
         ThemeBox.ItemsSource = viewModel.ThemeNames;
-        if (viewModel.OpensAtExclusions)
-            Loaded += OnLoadedScrollToExclusions;
     }
 
     public SettingsViewModel ViewModel { get; }
 
-    // 「送らないファイル」のところまで送る。ダイアログが開き終わるまでは、送れる長さが決まらないので、少し待ってから動かす
-    private async void OnLoadedScrollToExclusions(object sender, RoutedEventArgs e)
+    /// <summary>
+    /// 「送らないファイル」のところを見せる。ダイアログが開き終わってから呼ぶ
+    /// （開いたときにダイアログが最初の部品へ移す選択で、上まで戻されないように、選択もそこへ移す）。
+    /// </summary>
+    public void ShowExclusions()
     {
-        Loaded -= OnLoadedScrollToExclusions;
-        try
+        ExclusionsToggle.Focus(FocusState.Programmatic);
+        ExclusionsHeading.StartBringIntoView(new BringIntoViewOptions
         {
-            for (var attempt = 0; attempt < 20; attempt++)
-            {
-                await Task.Delay(100);
-                if (FindScrollViewer() is not { ScrollableHeight: > 0, Content: UIElement content } scroller)
-                    continue;
-                var top = ExclusionsHeading.TransformToVisual(content).TransformPoint(new Point(0, 0)).Y;
-                scroller.ChangeView(null, Math.Min(top, scroller.ScrollableHeight), null, disableAnimation: true);
-                return;
-            }
-        }
-        catch (ArgumentException)
-        {
-            // 閉じたあとなど、画面の木から外れていたら何もしない
-        }
-    }
-
-    private ScrollViewer? FindScrollViewer()
-    {
-        for (DependencyObject? current = this; current is not null; current = VisualTreeHelper.GetParent(current))
-        {
-            if (current is ScrollViewer scroller)
-                return scroller;
-        }
-        return null;
+            AnimationDesired = false,
+            VerticalAlignmentRatio = 0,
+        });
     }
 
     // 名前の欄で Enter を押すと足す（ダイアログが閉じないよう、ここで受け止める）

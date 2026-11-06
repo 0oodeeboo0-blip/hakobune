@@ -123,6 +123,7 @@
                     TextWrapping="Wrap" />
             </StackPanel>
             <ToggleSwitch
+                x:Name="ExclusionsToggle"
                 Grid.Column="2"
                 MinWidth="0"
                 VerticalAlignment="Center"

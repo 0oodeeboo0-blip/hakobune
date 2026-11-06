@@ -501,15 +501,18 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
     public Task ShowSettingsAsync(SettingsViewModel settings) =>
         OnUiThreadAsync(async () =>
         {
+            var view = new SettingsView(settings);
             var dialog = new ContentDialog
             {
                 Title = "設定",
-                Content = new SettingsView(settings),
+                Content = view,
                 CloseButtonText = "閉じる",
                 DefaultButton = ContentDialogButton.Close,
             };
             // カードを並べるので、ふつうのダイアログより少し広げる
             dialog.Resources["ContentDialogMaxWidth"] = 640d;
+            if (settings.OpensAtExclusions)
+                dialog.Opened += (_, _) => _dispatcher.TryEnqueue(DispatcherQueuePriority.Low, view.ShowExclusions);
             await ShowAsync(dialog).ConfigureAwait(true);
             return true;
         });

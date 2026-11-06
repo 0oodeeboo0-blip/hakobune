@@ -801,7 +801,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             (progress, cancellationToken) => upload
                 ? SyncPlanner.PlanAsync(direction, local, localRoot, remote, remoteRoot, exclusions, progress, cancellationToken)
                 : SyncPlanner.PlanAsync(direction, remote, remoteRoot, local, localRoot, exclusions, progress, cancellationToken),
-            _time.LocalTimeZone);
+            _time);
         sync.Start();
         bool confirmed;
         try

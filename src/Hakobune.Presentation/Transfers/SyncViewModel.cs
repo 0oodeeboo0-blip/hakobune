@@ -44,7 +44,7 @@ public sealed class SyncViewModel : ObservableObject
 {
     private readonly Func<IProgress<SyncScanProgress>, CancellationToken, Task<SyncPlan>> _plan;
     private readonly CancellationTokenSource _cancel = new();
-    private readonly TimeZoneInfo _timeZone;
+    private readonly TimeProvider _time;
     private SyncPlan? _result;
 
     /// <summary>
@@ -56,7 +56,7 @@ public sealed class SyncViewModel : ObservableObject
         string sourceText,
         string targetText,
         Func<IProgress<SyncScanProgress>, CancellationToken, Task<SyncPlan>> plan,
-        TimeZoneInfo? timeZone = null)
+        TimeProvider? time = null)
     {
         ArgumentNullException.ThrowIfNull(sourceText);
         ArgumentNullException.ThrowIfNull(targetText);
@@ -65,7 +65,7 @@ public sealed class SyncViewModel : ObservableObject
         SourceText = sourceText;
         TargetText = targetText;
         _plan = plan;
-        _timeZone = timeZone ?? TimeZoneInfo.Local;
+        _time = time ?? TimeProvider.System;
     }
 
     /// <summary>向き。</summary>
@@ -347,8 +347,16 @@ public sealed class SyncViewModel : ObservableObject
         };
     }
 
-    private string Format(DateTimeOffset? time) =>
-        time is { } value ? TimeZoneInfo.ConvertTime(value, _timeZone).ToString("MM/dd HH:mm", CultureInfo.InvariantCulture) : "";
+    // 今年なら月日と時刻、去年より前なら年も出す
+    private string Format(DateTimeOffset? time)
+    {
+        if (time is not { } value)
+            return "";
+        var zone = _time.LocalTimeZone;
+        var local = TimeZoneInfo.ConvertTime(value, zone);
+        var thisYear = TimeZoneInfo.ConvertTime(_time.GetUtcNow(), zone).Year;
+        return local.ToString(local.Year == thisYear ? "MM/dd HH:mm" : "yyyy/MM/dd HH:mm", CultureInfo.InvariantCulture);
+    }
 
     private static string DescribeOffset(TimeSpan offset)
     {

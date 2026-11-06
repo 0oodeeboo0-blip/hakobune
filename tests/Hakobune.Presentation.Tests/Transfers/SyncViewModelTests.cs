@@ -12,6 +12,9 @@ public sealed class SyncViewModelTests
     private static readonly DateTimeOffset T0 = new(2026, 11, 6, 3, 10, 0, TimeSpan.Zero);
     private static readonly TimeZoneInfo Tokyo = TimeZoneInfo.CreateCustomTimeZone("JST", TimeSpan.FromHours(9), "日本", "日本");
 
+    // いまは T0、地域は日本
+    private static readonly TimeProvider Time = new TokyoTime();
+
     private static FileEntry Local(string relative, long size, DateTimeOffset modified) =>
         new(relative.Split('/')[^1], "/site/" + relative, FileEntryType.File, size, modified);
 
@@ -26,7 +29,7 @@ public sealed class SyncViewModelTests
             new SyncItem(SyncChange.TargetNewer, "contact.html", Local("contact.html", 100, T0.AddDays(-2)), Remote("contact.html", 120, T0)),
             new SyncItem(SyncChange.Changed, "index.html", Local("index.html", 2048, T0), Remote("index.html", 1024, T0.AddDays(-1))),
             new SyncItem(SyncChange.New, "news.html", Local("news.html", 512, T0), null),
-            new SyncItem(SyncChange.OnlyOnTarget, "old", null, new FileEntry("old", "/www/old", FileEntryType.Directory, 0, T0)),
+            new SyncItem(SyncChange.OnlyOnTarget, "old", null, new FileEntry("old", "/www/old", FileEntryType.Directory, 0, T0.AddYears(-1))),
             new SyncItem(SyncChange.OnlyOnTarget, "old.html", null, Remote("old.html", 10, T0.AddDays(-30))),
             new SyncItem(SyncChange.New, "uploads", new FileEntry("uploads", "/site/uploads", FileEntryType.Directory, 0, T0), null),
             new SyncItem(SyncChange.Conflict, "x", Local("x", 1, T0), new FileEntry("x", "/www/x", FileEntryType.Directory, 0, T0)),
@@ -39,7 +42,7 @@ public sealed class SyncViewModelTests
 
     private static async Task<SyncViewModel> ReviewAsync(SyncPlan plan)
     {
-        var sync = new SyncViewModel(plan.Direction, "/site", "example.com /www", (_, _) => Task.FromResult(plan), Tokyo);
+        var sync = new SyncViewModel(plan.Direction, "/site", "example.com /www", (_, _) => Task.FromResult(plan), Time);
         sync.Start();
         await sync.Planning;
         return sync;
@@ -72,6 +75,8 @@ public sealed class SyncViewModelTests
         Assert.True(sync.CanConfirm);
         Assert.True(sync.CanDeleteOnlyOnTarget);
         Assert.Equal(new[] { "old/", "old.html" }, sync.OnlyOnTargetRows.Select(row => row.Path).ToArray());
+        // 去年より前のものは、年も出す
+        Assert.Equal(new[] { "2025/11/06 12:10", "10/07 12:10" }, sync.OnlyOnTargetRows.Select(row => row.WhenText).ToArray());
         Assert.All(sync.OnlyOnTargetRows, row => Assert.Equal("残す", row.Chip));
         Assert.All(sync.OnlyOnTargetRows, row => Assert.True(row.IsOther));
         Assert.Equal(3, sync.BuildRequests().Count);
@@ -134,7 +139,7 @@ public sealed class SyncViewModelTests
             "/site",
             "/www",
             (_, _) => Task.FromException<SyncPlan>(new RemoteOperationException(TransferFailure.Transient(FailureReason.ConnectionLost))),
-            Tokyo);
+            Time);
         sync.Start();
         await sync.Planning;
 
@@ -160,7 +165,7 @@ public sealed class SyncViewModelTests
                 await Task.Delay(Timeout.Infinite, cancellationToken);
                 throw new InvalidOperationException("ここには来ない");
             },
-            Tokyo);
+            Time);
         sync.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(SyncViewModel.ScanText))
@@ -180,5 +185,12 @@ public sealed class SyncViewModelTests
         Assert.False(sync.IsScanning);
         Assert.False(sync.HasResult);
         Assert.Empty(sync.BuildRequests());
+    }
+
+    private sealed class TokyoTime : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => T0;
+
+        public override TimeZoneInfo LocalTimeZone => Tokyo;
     }
 }
