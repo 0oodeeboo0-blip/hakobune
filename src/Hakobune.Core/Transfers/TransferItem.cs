@@ -5,7 +5,7 @@ namespace Hakobune.Core.Transfers;
 /// </summary>
 internal sealed class TransferItem(long sequence, TransferRequest request)
 {
-    public Guid Id { get; } = Guid.NewGuid();
+    public Guid Id { get; init; } = Guid.NewGuid();
 
     public long Sequence { get; } = sequence;
 

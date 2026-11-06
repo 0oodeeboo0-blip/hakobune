@@ -40,6 +40,20 @@ internal sealed class FakeServer : IRemoteSessionFactory
     /// <summary>アップロードの最初に待たせたいとき（中止のテスト用）。</summary>
     public Func<CancellationToken, Task>? BeforeUpload { get; set; }
 
+    /// <summary>一覧の取得のたびに呼ばれる（パス）。失敗させたいときは失敗を返す。</summary>
+    public Func<string, TransferFailure?>? ListFault { get; set; }
+
+    /// <summary>一覧の取得の最初に待たせたいとき（同時に使われないかのテスト用）。</summary>
+    public Func<CancellationToken, Task>? BeforeList { get; set; }
+
+    /// <summary>接続の維持の合図のたびに呼ばれる。失敗させたいときは失敗を返す。</summary>
+    public Func<TransferFailure?>? KeepAliveFault { get; set; }
+
+    /// <summary>1 本の接続が同時に複数の場所から使われたことがあるか。</summary>
+    public bool ConcurrentUseDetected { get; private set; }
+
+    internal void ReportConcurrentUse() => ConcurrentUseDetected = true;
+
     public int SessionsCreated => Volatile.Read(ref _sessionsCreated);
 
     public int ConnectAttempts => Volatile.Read(ref _connectAttempts);
@@ -94,6 +108,7 @@ internal sealed class FakeServer : IRemoteSessionFactory
 internal sealed class FakeRemoteSession(FakeServer server) : IRemoteSession
 {
     private bool _connected;
+    private int _activeOperations;
 
     public bool IsConnected => _connected;
 
@@ -113,10 +128,23 @@ internal sealed class FakeRemoteSession(FakeServer server) : IRemoteSession
         return Task.FromResult("/");
     }
 
-    public Task<IReadOnlyList<RemoteItem>> ListAsync(string path, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<RemoteItem>> ListAsync(string path, CancellationToken cancellationToken)
     {
         EnsureConnected();
-        return Task.FromResult(server.Files.List(path));
+        if (Interlocked.Increment(ref _activeOperations) > 1)
+            server.ReportConcurrentUse();
+        try
+        {
+            if (server.BeforeList is { } before)
+                await before(cancellationToken);
+            if (server.ListFault?.Invoke(path) is { } failure)
+                Throw(failure);
+            return server.Files.List(path);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _activeOperations);
+        }
     }
 
     public Task<RemoteItem?> GetItemAsync(string path, CancellationToken cancellationToken)
@@ -195,6 +223,8 @@ internal sealed class FakeRemoteSession(FakeServer server) : IRemoteSession
     public Task KeepAliveAsync(CancellationToken cancellationToken)
     {
         EnsureConnected();
+        if (server.KeepAliveFault?.Invoke() is { } failure)
+            Throw(failure);
         return Task.CompletedTask;
     }
 

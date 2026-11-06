@@ -81,6 +81,67 @@ public sealed class TransferScheduler : ITransferSink
             return SummarizeLocked();
     }
 
+    /// <summary>保存用に、すべての項目の状態を取り出す。</summary>
+    public IReadOnlyList<SavedTransferItem> SaveState()
+    {
+        lock (_gate)
+        {
+            return _items.Select(item => new SavedTransferItem(
+                item.Id,
+                item.Request.Direction,
+                item.Request.LocalPath,
+                item.Request.RemotePath,
+                item.Request.OnConflict,
+                item.State,
+                item.FailedAttempts,
+                item.LastFailure?.Reason,
+                item.LastFailure?.Kind,
+                item.LastFailure?.ReplyCode,
+                item.LastFailure?.ServerMessage,
+                item.HasWrittenTarget,
+                item.TotalBytes,
+                item.TransferredBytes,
+                item.Note)).ToList();
+        }
+    }
+
+    /// <summary>
+    /// 保存しておいた項目を戻す。転送中だった項目は、続きから送れるように待機中に戻す。実行中は呼べない。
+    /// </summary>
+    public void Restore(IEnumerable<SavedTransferItem> saved)
+    {
+        ArgumentNullException.ThrowIfNull(saved);
+        lock (_gate)
+        {
+            if (_running)
+                throw new InvalidOperationException("転送の実行中は復元できません。");
+
+            foreach (var entry in saved)
+            {
+                var request = new TransferRequest(entry.Direction, entry.LocalPath, entry.RemotePath, entry.OnConflict);
+                _items.Add(new TransferItem(_nextSequence++, request)
+                {
+                    Id = entry.Id,
+                    State = entry.State switch
+                    {
+                        TransferState.Running when entry.FailedAttempts > 0 => TransferState.WaitingToRetry,
+                        TransferState.Running => TransferState.Queued,
+                        _ => entry.State,
+                    },
+                    FailedAttempts = entry.FailedAttempts,
+                    LastFailure = entry.LastFailureReason is { } reason
+                        ? new TransferFailure(reason, entry.LastFailureKind ?? FailureKind.Permanent, entry.LastFailureCode, entry.LastFailureMessage)
+                        : null,
+                    HasWrittenTarget = entry.HasWrittenTarget,
+                    TotalBytes = entry.TotalBytes,
+                    TransferredBytes = entry.TransferredBytes,
+                    Note = entry.Note,
+                });
+            }
+            SignalLocked();
+        }
+    }
+
     /// <summary>失敗した項目を待機中に戻す（「失敗分を再送」）。戻した件数を返す。</summary>
     public int RetryFailed()
     {
