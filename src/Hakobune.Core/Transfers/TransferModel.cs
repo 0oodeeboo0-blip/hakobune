@@ -61,6 +61,8 @@ public sealed record TransferRequest(
 /// <summary>
 /// 送信待ちの 1 件の、ある時点の様子。画面に出すために使う。
 /// </summary>
+/// <param name="SizeVerified">完了したとき、転送後に大きさを照合して一致したか。</param>
+/// <param name="FinishedAt">完了・失敗・スキップになった時刻。</param>
 public sealed record TransferItemSnapshot(
     Guid Id,
     long Sequence,
@@ -73,7 +75,9 @@ public sealed record TransferItemSnapshot(
     DateTimeOffset? RetryAt,
     long TotalBytes,
     long TransferredBytes,
-    string? Note);
+    string? Note,
+    bool SizeVerified = false,
+    DateTimeOffset? FinishedAt = null);
 
 /// <summary>送信待ち全体の件数。</summary>
 public sealed record TransferSummary(

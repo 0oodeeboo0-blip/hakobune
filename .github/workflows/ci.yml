@@ -25,10 +25,15 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: ビルド
-        run: dotnet build tests/Hakobune.Core.Tests/Hakobune.Core.Tests.csproj -c Release
+        run: |
+          dotnet build tests/Hakobune.Core.Tests/Hakobune.Core.Tests.csproj -c Release
+          dotnet build tests/Hakobune.Presentation.Tests/Hakobune.Presentation.Tests.csproj -c Release
 
-      - name: テスト
+      - name: テスト（転送の仕組み）
         run: dotnet run --project tests/Hakobune.Core.Tests/Hakobune.Core.Tests.csproj -c Release --no-build
+
+      - name: テスト（画面の動き）
+        run: dotnet run --project tests/Hakobune.Presentation.Tests/Hakobune.Presentation.Tests.csproj -c Release --no-build
 
   integration:
     name: 実サーバーでのテスト (Linux)
@@ -90,6 +95,18 @@ jobs:
           path: publish/Hakobune-win-x64
           if-no-files-found: error
 
+      # ランナーの画面は 1024x768 なので、1280x800 のウインドウが収まるように広げる
+      - name: 画面の解像度を上げる
+        shell: powershell
+        run: |
+          try {
+            Set-DisplayResolution -Width 1920 -Height 1080 -Force -ErrorAction Stop
+          } catch {
+            Write-Host "解像度を変えられませんでした: $_"
+          }
+          Add-Type -AssemblyName System.Windows.Forms
+          Write-Host "画面: $([System.Windows.Forms.Screen]::PrimaryScreen.Bounds)"
+
       # 起動してすぐ落ちないかを確かめ、画面写真を撮る
       - name: 起動テストと画面写真
         shell: powershell
@@ -112,6 +129,45 @@ jobs:
           $bmp.Dispose()
           Stop-Process -Id $p.Id -Force
 
+      # 見本のデータで画面を出し、アプリ自身に画面写真を撮らせる（ライト・ダーク・一覧の更新に失敗した場面）
+      - name: 見本の画面写真
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD 'publish\Hakobune-win-x64\Hakobune.exe'
+          New-Item -ItemType Directory -Force screenshots | Out-Null
+          $shots = @(
+            @{ Name = 'main-light'; Args = '--demo --theme light' },
+            @{ Name = 'main-dark-stale'; Args = '--demo --scenario stale --theme dark' },
+            @{ Name = 'main-light-stale'; Args = '--demo --scenario stale --theme light' }
+          )
+          $failed = $false
+          foreach ($shot in $shots) {
+            $png = Join-Path $PWD "screenshots\$($shot.Name).png"
+            $p = Start-Process -FilePath $exe -ArgumentList "$($shot.Args) --screenshot `"$png`"" -PassThru
+            $null = $p.Handle
+            if (-not $p.WaitForExit(120000)) {
+              Stop-Process -Id $p.Id -Force
+              Write-Host "::error::$($shot.Name): 時間内に終わりませんでした"
+              $failed = $true
+            }
+            if (Test-Path "$png.error.txt") {
+              Write-Host "::error::$($shot.Name): アプリがエラーを記録しました"
+              Get-Content "$png.error.txt"
+              $failed = $true
+            }
+            if (Test-Path $png) {
+              Write-Host "$($shot.Name): $((Get-Item $png).Length) バイト (終了コード $($p.ExitCode))"
+            } else {
+              Write-Host "::error::$($shot.Name): 画面写真がありません (終了コード $($p.ExitCode))"
+              $failed = $true
+            }
+          }
+          if ($failed) {
+            Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Level = 2 } -MaxEvents 10 -ErrorAction SilentlyContinue |
+              ForEach-Object { Write-Host "---- $($_.TimeCreated) $($_.ProviderName)"; Write-Host $_.Message }
+            exit 1
+          }
+
       - name: 画面写真を保存
         if: always()
         uses: actions/upload-artifact@v6
@@ -122,16 +178,24 @@ jobs:
 
       # main の最新の画面写真を screenshots ブランチに置く（毎回上書き）。GitHub 上でも見られる。
       - name: 画面写真を screenshots ブランチに置く
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          if (-not (Test-Path screenshots)) {
+            Write-Host '画面写真がありません'
+            exit 0
+          }
           $dir = Join-Path $env:RUNNER_TEMP 'screenshots-branch'
           New-Item -ItemType Directory -Force $dir | Out-Null
           Copy-Item screenshots\* $dir
           $sha = $env:GITHUB_SHA.Substring(0, 7)
-          Set-Content -Path (Join-Path $dir 'README.md') -Encoding utf8 -Value "# 画面写真`n`nCI が自動で撮った、main の最新（$sha）の画面写真です。"
+          $lines = @('# 画面写真', '', "CI が自動で撮った、main の最新（$sha）の画面写真です。", '')
+          foreach ($file in Get-ChildItem $dir -Filter *.png | Sort-Object Name) {
+            $lines += "## $($file.BaseName)", '', "![$($file.BaseName)]($($file.Name))", ''
+          }
+          Set-Content -Path (Join-Path $dir 'README.md') -Encoding utf8 -Value $lines
           Set-Location $dir
           git init -q -b screenshots
           git config user.name 'github-actions[bot]'

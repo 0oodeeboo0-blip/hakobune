@@ -1,9 +1,11 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Hakobune.Core/Hakobune.Core.csproj" />
+    <Project Path="src/Hakobune.Presentation/Hakobune.Presentation.csproj" />
     <Project Path="src/Hakobune.App/Hakobune.App.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Hakobune.Core.Tests/Hakobune.Core.Tests.csproj" />
+    <Project Path="tests/Hakobune.Presentation.Tests/Hakobune.Presentation.Tests.csproj" />
   </Folder>
 </Solution>

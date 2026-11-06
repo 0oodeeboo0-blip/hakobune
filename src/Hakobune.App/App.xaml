@@ -8,6 +8,219 @@
             <ResourceDictionary.MergedDictionaries>
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
+
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="HakobuneBrandBrush" Color="#FF0B6E78" />
+                    <SolidColorBrush x:Key="HakobuneAccentTextBrush" Color="#FF0B6E78" />
+                    <SolidColorBrush x:Key="HakobuneAccentTintBrush" Color="#1C0B6E78" />
+                    <SolidColorBrush x:Key="HakobuneFolderFillBrush" Color="#FFF2C45A" />
+                    <SolidColorBrush x:Key="HakobuneFolderStrokeBrush" Color="#FFC08A1A" />
+                    <SolidColorBrush x:Key="HakobuneFailedTextBrush" Color="#FFB3261E" />
+                    <SolidColorBrush x:Key="HakobuneFailedRowBrush" Color="#12C42B1C" />
+                    <SolidColorBrush x:Key="HakobuneFailedBadgeBrush" Color="#1FC42B1C" />
+                    <SolidColorBrush x:Key="HakobuneRetryTextBrush" Color="#FF8A5300" />
+                    <SolidColorBrush x:Key="HakobuneRetryRowBrush" Color="#129D5D00" />
+                    <SolidColorBrush x:Key="HakobuneWarningTagBackgroundBrush" Color="#FFFFF4CE" />
+                    <SolidColorBrush x:Key="HakobuneWarningTagTextBrush" Color="#FF8A5300" />
+                    <SolidColorBrush x:Key="HakobuneBadgeBrush" Color="#14000000" />
+                    <SolidColorBrush x:Key="HakobuneStatusBarBrush" Color="#0A000000" />
+                    <SolidColorBrush x:Key="BreadcrumbBarNormalForegroundBrush" Color="{ThemeResource TextFillColorSecondary}" />
+                    <SolidColorBrush x:Key="BreadcrumbBarHoverForegroundBrush" Color="{ThemeResource TextFillColorPrimary}" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="HakobuneBrandBrush" Color="#FF0B6E78" />
+                    <SolidColorBrush x:Key="HakobuneAccentTextBrush" Color="#FF64CED8" />
+                    <SolidColorBrush x:Key="HakobuneAccentTintBrush" Color="#2E64CED8" />
+                    <SolidColorBrush x:Key="HakobuneFolderFillBrush" Color="#FFD9A63C" />
+                    <SolidColorBrush x:Key="HakobuneFolderStrokeBrush" Color="#FFA27718" />
+                    <SolidColorBrush x:Key="HakobuneFailedTextBrush" Color="#FFFF99A4" />
+                    <SolidColorBrush x:Key="HakobuneFailedRowBrush" Color="#14FF99A4" />
+                    <SolidColorBrush x:Key="HakobuneFailedBadgeBrush" Color="#2EFF99A4" />
+                    <SolidColorBrush x:Key="HakobuneRetryTextBrush" Color="#FFFFC266" />
+                    <SolidColorBrush x:Key="HakobuneRetryRowBrush" Color="#12FFB547" />
+                    <SolidColorBrush x:Key="HakobuneWarningTagBackgroundBrush" Color="#FF3B311B" />
+                    <SolidColorBrush x:Key="HakobuneWarningTagTextBrush" Color="#FFFFC266" />
+                    <SolidColorBrush x:Key="HakobuneBadgeBrush" Color="#1FFFFFFF" />
+                    <SolidColorBrush x:Key="HakobuneStatusBarBrush" Color="#33000000" />
+                    <SolidColorBrush x:Key="BreadcrumbBarNormalForegroundBrush" Color="{ThemeResource TextFillColorSecondary}" />
+                    <SolidColorBrush x:Key="BreadcrumbBarHoverForegroundBrush" Color="{ThemeResource TextFillColorPrimary}" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="HakobuneBrandBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="HakobuneAccentTextBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="HakobuneAccentTintBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="HakobuneFolderFillBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="HakobuneFolderStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="HakobuneFailedTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="HakobuneFailedRowBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="HakobuneFailedBadgeBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+                    <SolidColorBrush x:Key="HakobuneRetryTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="HakobuneRetryRowBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="HakobuneWarningTagBackgroundBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+                    <SolidColorBrush x:Key="HakobuneWarningTagTextBrush" Color="{ThemeResource SystemColorButtonTextColor}" />
+                    <SolidColorBrush x:Key="HakobuneBadgeBrush" Color="{ThemeResource SystemColorButtonFaceColor}" />
+                    <SolidColorBrush x:Key="HakobuneStatusBarBrush" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="BreadcrumbBarNormalForegroundBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
+                    <SolidColorBrush x:Key="BreadcrumbBarHoverForegroundBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+            <!-- アクセント色（青緑）。Windows の設定の色ではなく、Hakobune の色を使う -->
+            <Color x:Key="SystemAccentColor">#FF138A96</Color>
+            <Color x:Key="SystemAccentColorLight1">#FF2FA3AE</Color>
+            <Color x:Key="SystemAccentColorLight2">#FF64CED8</Color>
+            <Color x:Key="SystemAccentColorLight3">#FF9BE3EA</Color>
+            <Color x:Key="SystemAccentColorDark1">#FF0B6E78</Color>
+            <Color x:Key="SystemAccentColorDark2">#FF07555D</Color>
+            <Color x:Key="SystemAccentColorDark3">#FF043B41</Color>
+
+            <!-- 背景のない、控えめなボタン（ツールバーや一覧の操作） -->
+            <Style x:Key="SubtleButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="{ThemeResource SubtleFillColorTransparentBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Padding" Value="12,0" />
+                <Setter Property="HorizontalAlignment" Value="Left" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="HorizontalContentAlignment" Value="Center" />
+                <Setter Property="VerticalContentAlignment" Value="Center" />
+                <Setter Property="FontFamily" Value="{ThemeResource ContentControlThemeFontFamily}" />
+                <Setter Property="FontSize" Value="{ThemeResource ControlContentThemeFontSize}" />
+                <Setter Property="FontWeight" Value="Normal" />
+                <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}" />
+                <Setter Property="UseSystemFocusVisuals" Value="True" />
+                <Setter Property="FocusVisualMargin" Value="-3" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <ContentPresenter
+                                x:Name="ContentPresenter"
+                                Padding="{TemplateBinding Padding}"
+                                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                AutomationProperties.AccessibilityView="Raw"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                ContentTransitions="{TemplateBinding ContentTransitions}"
+                                CornerRadius="{TemplateBinding CornerRadius}"
+                                Foreground="{TemplateBinding Foreground}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="ContentPresenter.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="ContentPresenter.Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}" />
+                                                <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource TextFillColorDisabledBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                            </ContentPresenter>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="ToolbarButtonStyle" BasedOn="{StaticResource SubtleButtonStyle}" TargetType="Button">
+                <Setter Property="Height" Value="40" />
+                <Setter Property="Padding" Value="12,0" />
+            </Style>
+
+            <Style x:Key="SubtleIconButtonStyle" BasedOn="{StaticResource SubtleButtonStyle}" TargetType="Button">
+                <Setter Property="Width" Value="40" />
+                <Setter Property="Height" Value="40" />
+                <Setter Property="Padding" Value="0" />
+            </Style>
+
+            <Style x:Key="RowActionButtonStyle" BasedOn="{StaticResource SubtleButtonStyle}" TargetType="Button">
+                <Setter Property="Width" Value="28" />
+                <Setter Property="Height" Value="28" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
+
+            <Style x:Key="SidebarGroupButtonStyle" BasedOn="{StaticResource SubtleButtonStyle}" TargetType="Button">
+                <Setter Property="Height" Value="32" />
+                <Setter Property="Padding" Value="8,0" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Left" />
+            </Style>
+
+            <Style x:Key="SidebarItemButtonStyle" BasedOn="{StaticResource SubtleButtonStyle}" TargetType="Button">
+                <Setter Property="Padding" Value="14,0,10,0" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="VerticalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="CornerRadius" Value="6" />
+            </Style>
+
+            <Style x:Key="TabButtonStyle" BasedOn="{StaticResource SubtleButtonStyle}" TargetType="Button">
+                <Setter Property="Height" Value="34" />
+                <Setter Property="Padding" Value="10,0" />
+                <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            </Style>
+
+            <Style x:Key="ColumnHeaderButtonStyle" BasedOn="{StaticResource SubtleButtonStyle}" TargetType="Button">
+                <Setter Property="Height" Value="28" />
+                <Setter Property="Padding" Value="4,0" />
+                <Setter Property="Margin" Value="-4,0" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="HorizontalContentAlignment" Value="Left" />
+            </Style>
+
+            <Style x:Key="ToolbarSeparatorStyle" TargetType="Rectangle">
+                <Setter Property="Width" Value="1" />
+                <Setter Property="Height" Value="24" />
+                <Setter Property="Margin" Value="6,0" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Fill" Value="{ThemeResource DividerStrokeColorDefaultBrush}" />
+            </Style>
+
+            <Style x:Key="PaneTitleTextStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+
+            <Style x:Key="SecondaryCaptionTextStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            </Style>
+
+            <Style x:Key="BadgeTextStyle" TargetType="TextBlock">
+                <Setter Property="FontSize" Value="11" />
+                <Setter Property="FontWeight" Value="SemiBold" />
+                <Setter Property="HorizontalAlignment" Value="Center" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+            </Style>
+
+            <Style x:Key="FileRowContainerStyle" BasedOn="{StaticResource DefaultListViewItemStyle}" TargetType="ListViewItem">
+                <Setter Property="MinHeight" Value="34" />
+                <Setter Property="Padding" Value="14,0" />
+            </Style>
+
+            <Style x:Key="TransferRowContainerStyle" BasedOn="{StaticResource DefaultListViewItemStyle}" TargetType="ListViewItem">
+                <Setter Property="MinHeight" Value="38" />
+                <Setter Property="Padding" Value="0" />
+            </Style>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

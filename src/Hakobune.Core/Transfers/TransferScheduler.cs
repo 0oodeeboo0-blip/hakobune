@@ -47,6 +47,9 @@ public sealed class TransferScheduler : ITransferSink
     /// <summary>項目の状態や進み具合が変わったときに呼ばれる（どのスレッドからも呼ばれうる）。</summary>
     public event EventHandler<TransferItemSnapshot>? ItemChanged;
 
+    /// <summary>転送の設定。</summary>
+    public TransferOptions Options => _options;
+
     /// <summary>送信待ちに加える。実行中に加えてもよい。</summary>
     public IReadOnlyList<TransferItemSnapshot> Enqueue(IEnumerable<TransferRequest> requests)
     {
@@ -64,6 +67,8 @@ public sealed class TransferScheduler : ITransferSink
             }
             SignalLocked();
         }
+        foreach (var snapshot in added)
+            Raise(snapshot);
         return added;
     }
 
@@ -101,7 +106,9 @@ public sealed class TransferScheduler : ITransferSink
                 item.HasWrittenTarget,
                 item.TotalBytes,
                 item.TransferredBytes,
-                item.Note)).ToList();
+                item.Note,
+                item.SizeVerified,
+                item.FinishedAt)).ToList();
         }
     }
 
@@ -111,6 +118,7 @@ public sealed class TransferScheduler : ITransferSink
     public void Restore(IEnumerable<SavedTransferItem> saved)
     {
         ArgumentNullException.ThrowIfNull(saved);
+        var restored = new List<TransferItemSnapshot>();
         lock (_gate)
         {
             if (_running)
@@ -119,7 +127,7 @@ public sealed class TransferScheduler : ITransferSink
             foreach (var entry in saved)
             {
                 var request = new TransferRequest(entry.Direction, entry.LocalPath, entry.RemotePath, entry.OnConflict);
-                _items.Add(new TransferItem(_nextSequence++, request)
+                var item = new TransferItem(_nextSequence++, request)
                 {
                     Id = entry.Id,
                     State = entry.State switch
@@ -136,10 +144,16 @@ public sealed class TransferScheduler : ITransferSink
                     TotalBytes = entry.TotalBytes,
                     TransferredBytes = entry.TransferredBytes,
                     Note = entry.Note,
-                });
+                    SizeVerified = entry.SizeVerified,
+                    FinishedAt = entry.FinishedAt,
+                };
+                _items.Add(item);
+                restored.Add(item.ToSnapshot());
             }
             SignalLocked();
         }
+        foreach (var snapshot in restored)
+            Raise(snapshot);
     }
 
     /// <summary>失敗した項目を待機中に戻す（「失敗分を再送」）。戻した件数を返す。</summary>
@@ -157,6 +171,7 @@ public sealed class TransferScheduler : ITransferSink
                 item.LastFailure = null;
                 item.RetryAt = null;
                 item.Note = null;
+                item.FinishedAt = null;
                 changed.Add(item.ToSnapshot());
             }
             SignalLocked();
@@ -274,7 +289,7 @@ public sealed class TransferScheduler : ITransferSink
         try
         {
             var result = await _executor.ExecuteAsync(item, session, this, cancellationToken).ConfigureAwait(false);
-            Finish(item, result.State, result.Note);
+            Finish(item, result);
             return true;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -416,15 +431,17 @@ public sealed class TransferScheduler : ITransferSink
         await timeoutSource.CancelAsync().ConfigureAwait(false);
     }
 
-    private void Finish(TransferItem item, TransferState state, string? note)
+    private void Finish(TransferItem item, ExecutionResult result)
     {
         TransferItemSnapshot snapshot;
         lock (_gate)
         {
-            item.State = state;
-            item.Note = note;
+            item.State = result.State;
+            item.Note = result.Note;
+            item.SizeVerified = result.SizeVerified;
             item.RetryAt = null;
-            if (state == TransferState.Completed)
+            item.FinishedAt = _time.GetUtcNow();
+            if (result.State == TransferState.Completed)
                 item.TransferredBytes = item.TotalBytes;
             snapshot = item.ToSnapshot();
             SignalLocked();
@@ -448,6 +465,7 @@ public sealed class TransferScheduler : ITransferSink
             {
                 item.State = TransferState.Failed;
                 item.RetryAt = null;
+                item.FinishedAt = _time.GetUtcNow();
             }
             snapshot = item.ToSnapshot();
             SignalLocked();

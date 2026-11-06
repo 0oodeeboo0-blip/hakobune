@@ -9,6 +9,8 @@
 - 画面の文言は日本語。失敗の理由の日本語の説明は Core 側にまとめて、テストできるようにする。
 - 設定の保存先は `%APPDATA%\Hakobune\`（接続先、送信待ち、設定）。パスワードは Windows の資格情報マネージャー。
 - 画面用の接続は `RemoteBrowser`、転送は `TransferScheduler`。画面からサーバーを直接触らない。
+- 画面の動き（ViewModel）は `Hakobune.Presentation`（WinUI に依存しない）に置き、Linux の CI でテストする。WinUI のアプリは XAML と Windows に固有の部分だけにする。
+- 見本モード（`--demo`）は、デザイン案と同じ中身を本物の ViewModel に流し込む。CI は `--screenshot` でアプリ自身に画面写真を撮らせ、`screenshots` ブランチに置く。
 
 ## 作る順番
 

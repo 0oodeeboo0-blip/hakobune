@@ -412,4 +412,63 @@ public class TransferSchedulerTests
         Assert.Equal(TransferRunOutcome.Cancelled, result.Outcome);
         Assert.Equal(5, result.Summary.Queued);
     }
+
+    [Fact]
+    public async Task Finished_items_record_when_they_finished_and_whether_the_size_was_checked()
+    {
+        using var temp = new TempDirectory();
+        var requests = UploadRequests(temp, 3, _ => [1, 2, 3]);
+        var server = new FakeServer
+        {
+            UploadFault = (path, _, _) => path == requests[2].RemotePath
+                ? new WriteFault(0, FtpReplyClassifier.Classify(550, "Permission denied."))
+                : null,
+        };
+        var scheduler = new TransferScheduler(server, FastOptions());
+        scheduler.Enqueue(requests);
+        var before = DateTimeOffset.UtcNow;
+
+        await scheduler.RunAsync(TestContext.Current.CancellationToken);
+
+        var items = scheduler.GetItems();
+        Assert.All(items, item => Assert.InRange(item.FinishedAt ?? DateTimeOffset.MinValue, before, DateTimeOffset.UtcNow));
+        Assert.True(items[0].SizeVerified);
+        Assert.True(items[1].SizeVerified);
+        Assert.Equal(TransferState.Failed, items[2].State);
+        Assert.False(items[2].SizeVerified);
+
+        // 送り直すときは、終わった時刻を消す
+        scheduler.RetryFailed();
+        Assert.Null(scheduler.GetItems()[2].FinishedAt);
+    }
+
+    [Fact]
+    public void Added_and_restored_items_are_announced_so_the_screen_can_show_them()
+    {
+        using var temp = new TempDirectory();
+        var scheduler = new TransferScheduler(new FakeServer(), FastOptions());
+        var announced = new List<TransferItemSnapshot>();
+        scheduler.ItemChanged += (_, snapshot) => announced.Add(snapshot);
+
+        scheduler.Enqueue(UploadRequests(temp, 3, _ => [1]));
+        scheduler.Restore(scheduler.SaveState().Select(item => item with { Id = Guid.NewGuid() }).ToList());
+
+        Assert.Equal(6, announced.Count);
+        Assert.All(announced, snapshot => Assert.Equal(TransferState.Queued, snapshot.State));
+        Assert.Equal(6, announced.Select(snapshot => snapshot.Id).Distinct().Count());
+    }
+
+    [Fact]
+    public async Task Size_is_not_reported_as_checked_when_checking_is_turned_off()
+    {
+        using var temp = new TempDirectory();
+        var scheduler = new TransferScheduler(new FakeServer(), FastOptions() with { VerifySize = false });
+        scheduler.Enqueue(UploadRequests(temp, 1, _ => [1]));
+
+        await scheduler.RunAsync(TestContext.Current.CancellationToken);
+
+        var item = Assert.Single(scheduler.GetItems());
+        Assert.Equal(TransferState.Completed, item.State);
+        Assert.False(item.SizeVerified);
+    }
 }

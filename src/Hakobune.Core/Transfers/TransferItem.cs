@@ -25,6 +25,12 @@ internal sealed class TransferItem(long sequence, TransferRequest request)
 
     public string? Note { get; set; }
 
+    /// <summary>完了したとき、転送後に大きさを照合して一致したか。</summary>
+    public bool SizeVerified { get; set; }
+
+    /// <summary>完了・失敗・スキップになった時刻。</summary>
+    public DateTimeOffset? FinishedAt { get; set; }
+
     /// <summary>
     /// この項目が転送先へ書き込みを始めたか。やり直しのとき、自分の書きかけを
     /// 「同じ名前のファイル」と取り違えないために使う。
@@ -46,7 +52,9 @@ internal sealed class TransferItem(long sequence, TransferRequest request)
         RetryAt,
         TotalBytes,
         TransferredBytes,
-        Note);
+        Note,
+        SizeVerified,
+        FinishedAt);
 }
 
 /// <summary>IProgress を、呼ばれたその場で処理する。</summary>

@@ -7,6 +7,7 @@
     <RootNamespace>Hakobune.App</RootNamespace>
     <AssemblyName>Hakobune</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\Hakobune.ico</ApplicationIcon>
     <Platforms>x86;x64;ARM64</Platforms>
     <RuntimeIdentifiers>win-x86;win-x64;win-arm64</RuntimeIdentifiers>
     <UseWinUI>true</UseWinUI>
@@ -30,11 +31,17 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- ウインドウのアイコン（タスクバーなど）として実行時に読む -->
+    <Content Include="Assets\Hakobune.ico" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Hakobune.Core\Hakobune.Core.csproj" />
+    <ProjectReference Include="..\Hakobune.Presentation\Hakobune.Presentation.csproj" />
   </ItemGroup>
 
 </Project>

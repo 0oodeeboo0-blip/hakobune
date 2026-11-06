@@ -21,7 +21,9 @@ public sealed record SavedTransferItem(
     bool HasWrittenTarget,
     long TotalBytes,
     long TransferredBytes,
-    string? Note);
+    string? Note,
+    bool SizeVerified = false,
+    DateTimeOffset? FinishedAt = null);
 
 /// <summary>送信待ちをファイルに保存し、読み込む。</summary>
 public static class TransferQueueFile

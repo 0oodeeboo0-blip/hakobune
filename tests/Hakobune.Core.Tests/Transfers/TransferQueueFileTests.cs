@@ -64,13 +64,34 @@ public class TransferQueueFileTests
         var saved = new SavedTransferItem(
             Guid.NewGuid(), TransferDirection.Download, @"C:\Users\user\日本語.txt", "/data/日本語.txt", ConflictPolicy.OverwriteIfNewer,
             TransferState.Failed, 3, FailureReason.PermissionDenied, FailureKind.Permanent, 550, "Permission denied.",
-            HasWrittenTarget: true, TotalBytes: 1000, TransferredBytes: 400, Note: null);
+            HasWrittenTarget: true, TotalBytes: 1000, TransferredBytes: 400, Note: null,
+            SizeVerified: false, FinishedAt: new DateTimeOffset(2026, 11, 6, 12, 31, 0, TimeSpan.FromHours(9)));
         var file = Path.Combine(temp.Path, "nested", "queue.json");
 
         await TransferQueueFile.SaveAsync(file, [saved], cancellationToken);
         var loaded = await TransferQueueFile.LoadAsync(file, cancellationToken);
 
         Assert.Equal(saved, Assert.Single(loaded));
+    }
+
+    [Fact]
+    public async Task Files_saved_before_new_fields_were_added_still_load()
+    {
+        using var temp = new TempDirectory();
+        var id = Guid.NewGuid();
+        var json = $$"""
+            {"Version":1,"Items":[{"Id":"{{id}}","Direction":"Upload","LocalPath":"a.txt","RemotePath":"/a.txt",
+            "OnConflict":"Overwrite","State":"Completed","FailedAttempts":0,"HasWrittenTarget":true,
+            "TotalBytes":1,"TransferredBytes":1}]}
+            """;
+        var file = temp.CreateFile("queue.json", System.Text.Encoding.UTF8.GetBytes(json));
+
+        var loaded = Assert.Single(await TransferQueueFile.LoadAsync(file, TestContext.Current.CancellationToken));
+
+        Assert.Equal(id, loaded.Id);
+        Assert.Equal(TransferState.Completed, loaded.State);
+        Assert.False(loaded.SizeVerified);
+        Assert.Null(loaded.FinishedAt);
     }
 
     [Fact]

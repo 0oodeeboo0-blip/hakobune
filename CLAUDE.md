@@ -5,10 +5,12 @@
 
 ## 構成
 
-- `src/Hakobune.Core`: 通信・転送の仕組み（net10.0、画面に依存しない）
-- `src/Hakobune.App`: WinUI 3 アプリ（Windows 専用。MSIX にせず、Windows App SDK を同梱）
-- `tests/Hakobune.Core.Tests`: Core のテスト（xUnit v3。`dotnet run --project tests/Hakobune.Core.Tests` で実行できる）
+- `src/Hakobune.Core`: 通信・転送の仕組み（net10.0、画面に依存しない）。失敗の理由などの日本語の文言も `Text/DisplayText.cs` に置く。
+- `src/Hakobune.Presentation`: 画面の動き（ViewModel。net10.0、WinUI に依存しないので Linux でテストできる）。見本のデータ（`Demo/`）もここ。
+- `src/Hakobune.App`: WinUI 3 アプリ（Windows 専用。MSIX にせず、Windows App SDK を同梱）。画面（XAML）と Windows に固有の部分だけ。
+- `tests/Hakobune.Core.Tests`、`tests/Hakobune.Presentation.Tests`: テスト（xUnit v3。`dotnet run --project <テストのプロジェクト>` で実行できる）
 - パッケージのバージョンは `Directory.Packages.props` で一元管理する。
+- ViewModel のプロパティは C# 14 の `field` と `SetProperty` で書く（CommunityToolkit.Mvvm のソース生成は使わない）。
 
 ## ビルドと確認
 
@@ -18,6 +20,10 @@
 - Actions の成果物（artifact）は作業環境からはダウンロードできない（保存先がブロックされる）。
   画面写真は CI が `screenshots` ブランチに置くので、git で取る:
   `git fetch --depth 1 origin +refs/heads/screenshots:refs/remotes/origin/screenshots && git show origin/screenshots:startup.png > /tmp/startup.png`
+  - `startup.png`: ふつうに起動した画面（画面全体）。`main-light.png`、`main-dark-stale.png`、`main-light-stale.png`: 見本のデータの画面。
+  - アプリが画面写真を撮れなかったときは、同じ名前の `.error.txt` もブランチに置かれる。
+- 見本の画面は `Hakobune.exe --demo [--scenario stale] [--theme light|dark] [--screenshot ファイル名] [--size 1280x800]` で出せる。
+  `--screenshot` を付けると、アプリ自身が画面写真（RenderTargetBitmap）を保存して終わる。
 - アプリのビルド結果（zip）は、利用者が Actions の成果物 `Hakobune-win-x64` からダウンロードする。
 - ライブラリの API は、公開リポジトリを `git clone --depth 1` して読む（GitHub には git で接続できる）。例: FluentFTP、SSH.NET。
 
@@ -30,7 +36,8 @@
 
 ## 注意
 
-- csproj などの XML のコメントに「--」を書かない（読み込みエラーになる）。
+- csproj などの XML のコメントに「--」を書かない（読み込みエラーになる）。XAML のコメントも同じ。
+- XAML のパスのデータ（`Path.Data`）は、絶対座標の M・L・C・A・Z だけで書く（SVG の省略した書き方は読めないことがある）。
 
 ## 守ること
 

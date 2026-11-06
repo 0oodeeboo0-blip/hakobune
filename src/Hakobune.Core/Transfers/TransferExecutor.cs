@@ -15,11 +15,11 @@ internal interface ITransferSink
 }
 
 /// <summary>1 回の試行の結果（完了またはスキップ）。失敗は例外で知らせる。</summary>
-internal readonly record struct ExecutionResult(TransferState State, string? Note)
+internal readonly record struct ExecutionResult(TransferState State, string? Note, bool SizeVerified)
 {
-    public static ExecutionResult Completed() => new(TransferState.Completed, null);
+    public static ExecutionResult Completed(bool sizeVerified) => new(TransferState.Completed, null, sizeVerified);
 
-    public static ExecutionResult Skipped(string note) => new(TransferState.Skipped, note);
+    public static ExecutionResult Skipped(string note) => new(TransferState.Skipped, note, false);
 }
 
 /// <summary>
@@ -101,7 +101,7 @@ internal sealed class TransferExecutor(TransferOptions options)
             await TrySetRemoteModifiedTimeAsync(session, request.RemotePath, local.LastWriteTimeUtc, cancellationToken).ConfigureAwait(false);
 
         sink.ReportProgress(item, length);
-        return ExecutionResult.Completed();
+        return ExecutionResult.Completed(sizeVerified: options.VerifySize);
     }
 
     private async Task<ExecutionResult> DownloadAsync(TransferItem item, IRemoteSession session, ITransferSink sink, CancellationToken cancellationToken)
@@ -166,7 +166,7 @@ internal sealed class TransferExecutor(TransferOptions options)
             File.SetLastWriteTimeUtc(finalPath, modified.UtcDateTime);
 
         sink.ReportProgress(item, downloaded);
-        return ExecutionResult.Completed();
+        return ExecutionResult.Completed(sizeVerified: options.VerifySize && length >= 0);
     }
 
     private static async Task TrySetRemoteModifiedTimeAsync(IRemoteSession session, string path, DateTime modifiedUtc, CancellationToken cancellationToken)
