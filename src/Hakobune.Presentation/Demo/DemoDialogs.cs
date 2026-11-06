@@ -12,6 +12,12 @@ public enum DemoDialog
     /// <summary>接続先の編集（詳しい設定を開いた状態）。</summary>
     EditConnection,
 
+    /// <summary>クイック接続。</summary>
+    QuickConnect,
+
+    /// <summary>秘密鍵のパスフレーズを聞く。</summary>
+    Passphrase,
+
     /// <summary>パスワードを聞く（前回のパスワードが違った）。</summary>
     Password,
 
@@ -67,8 +73,8 @@ public static class DemoDialogs
         "CN=portal.example.com",
         "CN=portal.example.com",
         "101B19C7EA72722C40420C7E5DEA1063C6971AF7CDE9F0E235DCEBE9071A862C",
-        new DateTimeOffset(2026, 4, 1, 0, 0, 0, TimeSpan.FromHours(9)),
-        new DateTimeOffset(2027, 3, 31, 23, 59, 59, TimeSpan.FromHours(9)),
+        new DateTimeOffset(2026, 4, 1, 12, 0, 0, TimeSpan.FromHours(9)),
+        new DateTimeOffset(2027, 3, 31, 12, 0, 0, TimeSpan.FromHours(9)),
         ConnectionService.DescribeProblems(System.Net.Security.SslPolicyErrors.RemoteCertificateChainErrors, null),
         PreviousFingerprint: null);
 
@@ -84,6 +90,12 @@ public static class DemoDialogs
                 break;
             case DemoDialog.EditConnection:
                 await dialogs.EditAsync(Profile, hasSavedPassword: true).ConfigureAwait(true);
+                break;
+            case DemoDialog.QuickConnect:
+                await dialogs.AskQuickConnectAsync().ConfigureAwait(true);
+                break;
+            case DemoDialog.Passphrase:
+                await prompts.AskPassphraseAsync(Profile with { PrivateKeyPath = @"C:\Users\user\.ssh\id_ed25519" }, previousAttemptFailed: false).ConfigureAwait(true);
                 break;
             case DemoDialog.Password:
                 await prompts.AskPasswordAsync(Profile, previousAttemptFailed: true).ConfigureAwait(true);

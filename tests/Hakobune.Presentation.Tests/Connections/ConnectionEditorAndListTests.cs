@@ -71,6 +71,20 @@ public class ConnectionEditorViewModelTests
     }
 
     [Fact]
+    public void Quick_connect_saves_nothing()
+    {
+        var editor = new ConnectionEditorViewModel(quickConnect: true) { Host = "sftp://web:secret@example.com/" };
+
+        var result = editor.ToResult();
+
+        Assert.Equal("クイック接続", editor.Title);
+        Assert.Equal("接続", editor.PrimaryButtonText);
+        Assert.False(editor.ShowsSaveOptions);
+        Assert.False(result.SavePassword);
+        Assert.Equal("secret", result.Password);
+    }
+
+    [Fact]
     public void Advanced_settings_are_open_when_something_was_changed()
     {
         Assert.False(new ConnectionEditorViewModel().OpensAdvancedSettings);

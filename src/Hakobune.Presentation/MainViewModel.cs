@@ -76,9 +76,18 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         DisconnectCommand = new AsyncRelayCommand(DisconnectAsync, () => IsConnected || IsConnecting);
         // 見本の画面でもボタンは押せる見た目にする（押しても何もしない）
         NewConnectionCommand = new AsyncRelayCommand(NewConnectionAsync);
+        QuickConnectCommand = new AsyncRelayCommand(AskQuickConnectAsync);
         EditConnectionCommand = new AsyncRelayCommand<ConnectionItemViewModel>(EditConnectionAsync);
         DuplicateConnectionCommand = new AsyncRelayCommand<ConnectionItemViewModel>(DuplicateConnectionAsync);
         DeleteConnectionCommand = new AsyncRelayCommand<ConnectionItemViewModel>(DeleteConnectionAsync);
+
+        // 接続先がまだ無いときは、サーバー側の案内で作り方を教える
+        connections.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(ConnectionListViewModel.IsEmpty))
+                UpdateDisconnectedHint();
+        };
+        UpdateDisconnectedHint();
     }
 
     /// <summary>パソコン側の一覧。</summary>
@@ -148,6 +157,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public IAsyncRelayCommand DisconnectCommand { get; }
 
     public IAsyncRelayCommand NewConnectionCommand { get; }
+
+    /// <summary>保存せずに接続する（クイック接続。Ctrl+Q）。</summary>
+    public IAsyncRelayCommand QuickConnectCommand { get; }
 
     public IAsyncRelayCommand<ConnectionItemViewModel> EditConnectionCommand { get; }
 
@@ -300,18 +312,25 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// URL（例: sftp://user@example.com/var/www）で接続する。接続先は保存せず、一覧の「クイック接続」に置く。
     /// URL にパスワードがあれば、保存はせずにアプリを閉じるまで覚えておく。
     /// </summary>
-    public async Task QuickConnectAsync(string url)
+    public Task QuickConnectAsync(string url)
     {
         ArgumentNullException.ThrowIfNull(url);
         if (!ConnectionProfile.TryParseUrl(url, out var profile, out var password))
         {
             Remote.ShowNotice("接続できませんでした", "URL を読み取れませんでした", url.Trim());
-            return;
+            return Task.CompletedTask;
         }
+        return QuickConnectAsync(profile, password);
+    }
+
+    /// <summary>保存せずに接続する。一覧の「クイック接続」に置き、パスワードはアプリを閉じるまで覚えておく。</summary>
+    public async Task QuickConnectAsync(ConnectionProfile profile, string? password)
+    {
+        ArgumentNullException.ThrowIfNull(profile);
         var item = Connections.AddTemporary(profile);
         if (password is not null)
             _sessionPasswords[item.Profile.Id] = password;
-        await ConnectAsync(item).ConfigureAwait(true);
+        await ConnectAsync(item, password).ConfigureAwait(true);
     }
 
     /// <summary>接続を切る。接続しているところなら、やめる。</summary>
@@ -351,6 +370,20 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         await SaveConnectionsAsync().ConfigureAwait(true);
         await ConnectAsync(item, result.Password).ConfigureAwait(true);
     }
+
+    private async Task AskQuickConnectAsync()
+    {
+        if (_services is null)
+            return;
+        var result = await _services.Dialogs.AskQuickConnectAsync().ConfigureAwait(true);
+        if (result is not null)
+            await QuickConnectAsync(result.Profile, result.Password).ConfigureAwait(true);
+    }
+
+    private void UpdateDisconnectedHint() =>
+        Remote.DisconnectedHint = Connections.IsEmpty && _services is not null
+            ? "左の「新しい接続」で接続先を登録すると、ここにサーバーのファイルが出ます"
+            : "左の接続先を選ぶと、ここにサーバーのファイルが出ます";
 
     private async Task EditConnectionAsync(ConnectionItemViewModel? item)
     {

@@ -267,9 +267,7 @@ public sealed class SftpRemoteSession : IRemoteSession
         var methods = new List<AuthenticationMethod>();
         if (!string.IsNullOrEmpty(_settings.PrivateKeyPath))
         {
-            _keyFile = string.IsNullOrEmpty(_settings.PrivateKeyPassphrase)
-                ? new PrivateKeyFile(_settings.PrivateKeyPath)
-                : new PrivateKeyFile(_settings.PrivateKeyPath, _settings.PrivateKeyPassphrase);
+            _keyFile = LoadPrivateKey(_settings.PrivateKeyPath, _settings.PrivateKeyPassphrase);
             methods.Add(new PrivateKeyAuthenticationMethod(_settings.UserName, _keyFile));
         }
         if (_settings.Password is { } password)
@@ -347,6 +345,33 @@ public sealed class SftpRemoteSession : IRemoteSession
 
     private static bool IsOurCancellation(Exception exception, CancellationToken cancellationToken) =>
         exception is OperationCanceledException && cancellationToken.IsCancellationRequested;
+
+    // 秘密鍵を読む。パスフレーズが要るとき、違うとき、ファイルが無いときは、それとわかる失敗にする。
+    private static PrivateKeyFile LoadPrivateKey(string path, string? passphrase)
+    {
+        try
+        {
+            return string.IsNullOrEmpty(passphrase) ? new PrivateKeyFile(path) : new PrivateKeyFile(path, passphrase);
+        }
+        catch (SshPassPhraseNullOrEmptyException ex)
+        {
+            throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.KeyPassphraseRequired, "秘密鍵にパスフレーズが掛かっています"), null, ex);
+        }
+        catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
+        {
+            throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.LocalFileNotFound, "秘密鍵のファイルが見つかりません"), null, ex);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.LocalAccessDenied, "秘密鍵のファイルを開けません"), null, ex);
+        }
+        catch (Exception ex) when (ex is not (OutOfMemoryException or RemoteOperationException))
+        {
+            // パスフレーズを入れたのに読めないなら、たいていはパスフレーズの間違い（壊れた中身を読もうとして、いろいろな例外になる）
+            var reason = string.IsNullOrEmpty(passphrase) ? FailureReason.KeyFileUnreadable : FailureReason.KeyPassphraseRequired;
+            throw new RemoteOperationException(TransferFailure.Permanent(reason, ex.Message), null, ex);
+        }
+    }
 }
 
 /// <summary>SSH.NET のエラーを、Hakobune の失敗に置き換える。</summary>

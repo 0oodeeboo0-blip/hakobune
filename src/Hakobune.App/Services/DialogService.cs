@@ -50,10 +50,10 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs
                     TextWrapping = TextWrapping.Wrap,
                 });
             }
-            var account = profile.UserName.Length > 0 ? $"{profile.UserName}@{profile.Host}" : profile.Host;
-            panel.Children.Add(new TextBlock { Text = $"{profile.DisplayName}（{account}）にログインします。", TextWrapping = TextWrapping.Wrap });
+            panel.Children.Add(Paragraph($"「{profile.DisplayName}」にログインします。"));
+            panel.Children.Add(Field("ユーザー", profile.UserName.Length > 0 ? $"{profile.UserName}@{profile.Host}" : profile.Host));
             var password = new PasswordBox { Header = "パスワード" };
-            var save = new CheckBox { Content = "パスワードを保存する（Windows の資格情報マネージャーに入れる）", IsChecked = true };
+            var save = new CheckBox { Content = "パスワードを保存する（Windows の資格情報マネージャーに入れます）", IsChecked = true };
             panel.Children.Add(password);
             panel.Children.Add(save);
             password.Loaded += (_, _) => password.Focus(FocusState.Programmatic);
@@ -68,6 +68,43 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs
             };
             var result = await ShowAsync(dialog).ConfigureAwait(true);
             return result == ContentDialogResult.Primary ? new PasswordAnswer(password.Password, save.IsChecked == true) : null;
+        });
+
+    public Task<string?> AskPassphraseAsync(ConnectionProfile profile, bool previousAttemptFailed) =>
+        OnUiThreadAsync<string?>(async () =>
+        {
+            var panel = new StackPanel { Spacing = 12, MinWidth = 360 };
+            if (previousAttemptFailed)
+            {
+                panel.Children.Add(new TextBlock
+                {
+                    Text = "パスフレーズが違うようです。もう一度入れてください。",
+                    Foreground = Brush("SystemFillColorCriticalBrush"),
+                    TextWrapping = TextWrapping.Wrap,
+                });
+            }
+            panel.Children.Add(Paragraph($"「{profile.DisplayName}」に入るための秘密鍵に、パスフレーズが掛かっています。"));
+            panel.Children.Add(Field("秘密鍵", profile.PrivateKeyPath ?? ""));
+            var passphrase = new PasswordBox { Header = "パスフレーズ" };
+            panel.Children.Add(passphrase);
+            panel.Children.Add(new TextBlock
+            {
+                Text = "パスフレーズは保存しません。アプリを閉じるまで覚えておきます。",
+                FontSize = 12,
+                Foreground = Brush("TextFillColorSecondaryBrush"),
+                TextWrapping = TextWrapping.Wrap,
+            });
+            passphrase.Loaded += (_, _) => passphrase.Focus(FocusState.Programmatic);
+
+            var dialog = new ContentDialog
+            {
+                Title = "パスフレーズを入れてください",
+                Content = panel,
+                PrimaryButtonText = "接続",
+                CloseButtonText = "やめる",
+                DefaultButton = ContentDialogButton.Primary,
+            };
+            return await ShowAsync(dialog).ConfigureAwait(true) == ContentDialogResult.Primary ? passphrase.Password : null;
         });
 
     public Task<bool> ConfirmHostKeyAsync(HostKeyQuestion question) =>
@@ -130,34 +167,39 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs
         });
 
     public Task<ConnectionEditResult?> EditAsync(ConnectionProfile? existing, bool hasSavedPassword) =>
-        OnUiThreadAsync<ConnectionEditResult?>(async () =>
+        OnUiThreadAsync(() => ShowEditorAsync(new ConnectionEditorViewModel(existing, hasSavedPassword)));
+
+    public Task<ConnectionEditResult?> AskQuickConnectAsync() =>
+        OnUiThreadAsync(() => ShowEditorAsync(new ConnectionEditorViewModel(quickConnect: true)));
+
+    // 接続先の作成・編集・クイック接続のダイアログ（画面のスレッドで呼ぶ）
+    private async Task<ConnectionEditResult?> ShowEditorAsync(ConnectionEditorViewModel editor)
+    {
+        var dialog = new ContentDialog
         {
-            var editor = new ConnectionEditorViewModel(existing, hasSavedPassword);
-            var dialog = new ContentDialog
-            {
-                Title = editor.Title,
-                Content = new ConnectionEditorView(editor, _windowHandle),
-                PrimaryButtonText = editor.PrimaryButtonText,
-                CloseButtonText = "やめる",
-                DefaultButton = ContentDialogButton.Primary,
-                IsPrimaryButtonEnabled = editor.IsValid,
-            };
-            PropertyChangedEventHandler onChanged = (_, e) =>
-            {
-                if (e.PropertyName == nameof(ConnectionEditorViewModel.IsValid))
-                    dialog.IsPrimaryButtonEnabled = editor.IsValid;
-            };
-            editor.PropertyChanged += onChanged;
-            try
-            {
-                var result = await ShowAsync(dialog).ConfigureAwait(true);
-                return result == ContentDialogResult.Primary && editor.IsValid ? editor.ToResult() : null;
-            }
-            finally
-            {
-                editor.PropertyChanged -= onChanged;
-            }
-        });
+            Title = editor.Title,
+            Content = new ConnectionEditorView(editor, _windowHandle),
+            PrimaryButtonText = editor.PrimaryButtonText,
+            CloseButtonText = "やめる",
+            DefaultButton = ContentDialogButton.Primary,
+            IsPrimaryButtonEnabled = editor.IsValid,
+        };
+        PropertyChangedEventHandler onChanged = (_, e) =>
+        {
+            if (e.PropertyName == nameof(ConnectionEditorViewModel.IsValid))
+                dialog.IsPrimaryButtonEnabled = editor.IsValid;
+        };
+        editor.PropertyChanged += onChanged;
+        try
+        {
+            var result = await ShowAsync(dialog).ConfigureAwait(true);
+            return result == ContentDialogResult.Primary && editor.IsValid ? editor.ToResult() : null;
+        }
+        finally
+        {
+            editor.PropertyChanged -= onChanged;
+        }
+    }
 
     public Task<bool> ConfirmDeleteAsync(ConnectionProfile profile) =>
         OnUiThreadAsync(async () =>

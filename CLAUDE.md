@@ -21,12 +21,12 @@
   画面写真は CI が `screenshots` ブランチに置くので、git で取る:
   `git fetch --depth 1 origin +refs/heads/screenshots:refs/remotes/origin/screenshots && git show origin/screenshots:startup.png > /tmp/startup.png`
   - `startup.png`: ふつうに起動した画面（画面全体）。`main-light.png`、`main-dark-stale.png`、`main-light-stale.png`: 見本のデータの画面。
-  - `dialog-*.png`: 見本のダイアログ（新しい接続、編集、パスワード、サーバーの鍵、証明書）。
+  - `dialog-*.png`: 見本のダイアログ（新しい接続、編集、クイック接続、パスワード、パスフレーズ、サーバーの鍵、証明書）。
   - `connected.png`: Windows の上の FTP サーバー（pyftpdlib）に `--connect` で実際に接続した画面。
   - アプリが画面写真を撮れなかったときは、同じ名前の `.error.txt` もブランチに置かれる。
 - 見本の画面は `Hakobune.exe --demo [--scenario stale] [--theme light|dark] [--screenshot ファイル名] [--size 1280x800]` で出せる。
   `--screenshot` を付けると、アプリ自身が画面写真（RenderTargetBitmap）を保存して終わる。
-  `--dialog new|edit|password|hostkey|hostkey-changed|certificate|delete` で見本のダイアログを出す（写真は画面から撮る）。
+  `--dialog new|edit|quick|password|passphrase|hostkey|hostkey-changed|certificate|delete` で見本のダイアログを出す（写真は画面から撮る）。
   `--connect URL` で起動してすぐクイック接続する（`--screenshot` と一緒なら、接続できなかったとき `.error.txt` を書く）。
 - アプリのビルド結果（zip）は、利用者が Actions の成果物 `Hakobune-win-x64` からダウンロードする。
 - ライブラリの API は、公開リポジトリを `git clone --depth 1` して読む（GitHub には git で接続できる）。例: FluentFTP、SSH.NET。

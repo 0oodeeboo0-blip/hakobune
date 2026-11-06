@@ -47,6 +47,9 @@ public interface IConnectionPrompts
     /// <summary>パスワードを聞く。やめたら null。</summary>
     Task<PasswordAnswer?> AskPasswordAsync(ConnectionProfile profile, bool previousAttemptFailed);
 
+    /// <summary>秘密鍵のパスフレーズを聞く（保存はせず、アプリを閉じるまで覚えておく）。やめたら null。</summary>
+    Task<string?> AskPassphraseAsync(ConnectionProfile profile, bool previousAttemptFailed);
+
     /// <summary>サーバーの鍵を信頼してよいか聞く。</summary>
     Task<bool> ConfirmHostKeyAsync(HostKeyQuestion question);
 
@@ -163,6 +166,9 @@ public sealed class ConnectionService
     private readonly IConnectionPrompts _prompts;
     private readonly SessionFactoryBuilder _createFactory;
 
+    // 秘密鍵のパスフレーズ（保存はしない。アプリを閉じるまで覚えておく）
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> _passphrases = new();
+
     // 転送の接続がいっせいに確かめに来ても、利用者に聞くのは 1 回にする
     private readonly SemaphoreSlim _askGate = new(1, 1);
 
@@ -193,13 +199,16 @@ public sealed class ConnectionService
             (password, save) = (answer.Password, answer.Save);
         }
 
-        for (var attempt = 1; ; attempt++)
+        var passphrase = _passphrases.GetValueOrDefault(profile.Id);
+        var passwordAttempts = 1;
+        var passphraseAttempts = 0;
+        while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var rejected = new RejectionFlag();
             var factory = _createFactory(
                 profile,
-                new ConnectionCredentials(password),
+                new ConnectionCredentials(password, passphrase),
                 CreateHostKeyValidator(profile, rejected),
                 CreateCertificateValidator(profile, rejected));
             var browser = new RemoteBrowser(factory);
@@ -218,7 +227,18 @@ public sealed class ConnectionService
                     return ConnectResult.Cancelled(profile);
 
                 var failure = FailureClassifier.FromException(ex);
-                if (failure.Reason != FailureReason.AuthenticationFailed || attempt >= MaxPasswordAttempts || !SessionFactories.NeedsPassword(profile))
+                if (failure.Reason == FailureReason.KeyPassphraseRequired && passphraseAttempts < MaxPasswordAttempts)
+                {
+                    // 秘密鍵にパスフレーズが掛かっている（または違った）。聞いてやり直す
+                    var wasWrong = passphrase is not null;
+                    _passphrases.TryRemove(profile.Id, out _);
+                    passphrase = await _prompts.AskPassphraseAsync(profile, wasWrong).ConfigureAwait(false);
+                    if (passphrase is null)
+                        return ConnectResult.Cancelled(profile);
+                    passphraseAttempts++;
+                    continue;
+                }
+                if (failure.Reason != FailureReason.AuthenticationFailed || passwordAttempts >= MaxPasswordAttempts || !SessionFactories.NeedsPassword(profile))
                     return ConnectResult.Failed(profile, failure);
 
                 // パスワードが違った。保存してあったものは消して、聞き直す
@@ -227,12 +247,15 @@ public sealed class ConnectionService
                 if (answer is null)
                     return ConnectResult.Cancelled(profile);
                 (password, save) = (answer.Password, answer.Save);
+                passwordAttempts++;
                 continue;
             }
 
             // 保存できなくても、今回の接続はそのまま使う（次に聞き直す）
             if (save && password is not null)
                 _secrets.TryWrite(profile.Id, password);
+            if (passphrase is not null)
+                _passphrases[profile.Id] = passphrase;
             return ConnectResult.Connected(profile, factory, browser, home);
         }
     }

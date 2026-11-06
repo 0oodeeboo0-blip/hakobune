@@ -81,7 +81,10 @@
                 x:Name="PasswordInput"
                 Header="パスワード"
                 PlaceholderText="{x:Bind ViewModel.PasswordPlaceholder, Mode=OneWay}" />
-            <CheckBox Content="パスワードを保存する（Windows の資格情報マネージャーに入れます）" IsChecked="{x:Bind ViewModel.SavePassword, Mode=TwoWay}" />
+            <CheckBox
+                Content="パスワードを保存する（Windows の資格情報マネージャーに入れます）"
+                IsChecked="{x:Bind ViewModel.SavePassword, Mode=TwoWay}"
+                Visibility="{x:Bind ViewModel.ShowsSaveOptions}" />
         </StackPanel>
 
         <!--  SFTP の秘密鍵  -->
@@ -103,7 +106,7 @@
                 Content="参照…" />
         </Grid>
 
-        <Grid ColumnSpacing="8">
+        <Grid ColumnSpacing="8" Visibility="{x:Bind ViewModel.ShowsSaveOptions}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="*" />

@@ -175,6 +175,8 @@ jobs:
             @{ Name = 'main-light-stale'; Args = '--demo --scenario stale --theme light' },
             @{ Name = 'dialog-new-connection'; Args = '--dialog new --theme light' },
             @{ Name = 'dialog-edit-dark'; Args = '--dialog edit --theme dark' },
+            @{ Name = 'dialog-quick-connect'; Args = '--dialog quick --theme light' },
+            @{ Name = 'dialog-passphrase-dark'; Args = '--dialog passphrase --theme dark' },
             @{ Name = 'dialog-password'; Args = '--dialog password --theme light' },
             @{ Name = 'dialog-hostkey'; Args = '--dialog hostkey --theme light' },
             @{ Name = 'dialog-hostkey-changed'; Args = '--dialog hostkey-changed --theme dark' },

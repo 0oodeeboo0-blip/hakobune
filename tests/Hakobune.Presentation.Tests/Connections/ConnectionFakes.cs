@@ -23,6 +23,9 @@ internal sealed class FakeLoginServer
     /// <summary>接続の前に待つ（遅いサーバーのまね）。</summary>
     public Func<ConnectionProfile, CancellationToken, Task>? Delay { get; set; }
 
+    /// <summary>秘密鍵で入るときの、鍵のパスフレーズ（null なら掛かっていない）。</summary>
+    public string? KeyPassphrase { get; set; }
+
     public int Logins { get; private set; }
 
     public List<string?> PasswordsTried { get; } = [];
@@ -49,10 +52,19 @@ internal sealed class FakeLoginServer
                 throw new RemoteOperationException(fault);
             if (!validateHostKey("ssh-ed25519", server.HostKeyFingerprint, 256))
                 throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.CertificateRejected));
-            lock (server.PasswordsTried)
-                server.PasswordsTried.Add(credentials.Password);
-            if (credentials.Password != server.Password)
-                throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.AuthenticationFailed));
+            if (!string.IsNullOrEmpty(profile.PrivateKeyPath))
+            {
+                // 秘密鍵で入る（パスワードは見ない）
+                if (server.KeyPassphrase is not null && credentials.Passphrase != server.KeyPassphrase)
+                    throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.KeyPassphraseRequired));
+            }
+            else
+            {
+                lock (server.PasswordsTried)
+                    server.PasswordsTried.Add(credentials.Password);
+                if (credentials.Password != server.Password)
+                    throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.AuthenticationFailed));
+            }
             server.Logins++;
             IsConnected = true;
         }
@@ -111,6 +123,11 @@ internal sealed class ScriptedPrompts : IConnectionPrompts
 
     public int PasswordQuestions { get; private set; }
 
+    public Queue<string?> Passphrases { get; } = new();
+
+    /// <summary>パスフレーズを聞いたときの「前のが違った」の値。</summary>
+    public List<bool> PassphraseQuestions { get; } = [];
+
     public List<HostKeyQuestion> HostKeyQuestions { get; } = [];
 
     public List<CertificateQuestion> CertificateQuestions { get; } = [];
@@ -119,6 +136,12 @@ internal sealed class ScriptedPrompts : IConnectionPrompts
     {
         PasswordQuestions++;
         return Task.FromResult(Passwords.Count > 0 ? Passwords.Dequeue() : null);
+    }
+
+    public Task<string?> AskPassphraseAsync(ConnectionProfile profile, bool previousAttemptFailed)
+    {
+        PassphraseQuestions.Add(previousAttemptFailed);
+        return Task.FromResult(Passphrases.Count > 0 ? Passphrases.Dequeue() : null);
     }
 
     public Task<bool> ConfirmHostKeyAsync(HostKeyQuestion question)
@@ -140,6 +163,8 @@ internal sealed class ScriptedDialogs : IConnectionDialogs
 {
     public Queue<ConnectionEditResult?> Edits { get; } = new();
 
+    public Queue<ConnectionEditResult?> QuickConnects { get; } = new();
+
     public bool ConfirmDelete { get; set; } = true;
 
     public int DeleteQuestions { get; private set; }
@@ -152,6 +177,9 @@ internal sealed class ScriptedDialogs : IConnectionDialogs
         HasSavedPasswordShown.Add(hasSavedPassword);
         return Task.FromResult(Edits.Count > 0 ? Edits.Dequeue() : null);
     }
+
+    public Task<ConnectionEditResult?> AskQuickConnectAsync() =>
+        Task.FromResult(QuickConnects.Count > 0 ? QuickConnects.Dequeue() : null);
 
     public Task<bool> ConfirmDeleteAsync(ConnectionProfile profile)
     {

@@ -2,6 +2,8 @@ using Hakobune.Presentation;
 using Hakobune.Presentation.Connections;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 
 namespace Hakobune.App.Views;
 
@@ -26,6 +28,16 @@ public sealed partial class MainView : UserControl
 
     /// <summary>Mica の背景を見せる（無地の背景を外す）。</summary>
     public void UseTransparentBackground() => Root.Background = null;
+
+    private async void OnQuickConnectInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        // ダイアログやメニューを開いているあいだは、重ねて出さない
+        if (XamlRoot is null || ViewModel.QuickConnectCommand.IsRunning
+            || VisualTreeHelper.GetOpenPopupsForXamlRoot(XamlRoot).Any(popup => popup.Child is not ToolTip))
+            return;
+        await ViewModel.QuickConnectCommand.ExecuteAsync(null);
+    }
 
     // 接続先をクリックすると接続する（接続中のものなら何もしない）
     private async void OnConnectionClick(object sender, RoutedEventArgs e)

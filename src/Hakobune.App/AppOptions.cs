@@ -11,7 +11,7 @@ namespace Hakobune.App;
 /// <list type="bullet">
 /// <item><c>--connect URL</c>: 起動したら URL（例: sftp://user@example.com/var/www）に接続する（クイック接続。保存はしない）。</item>
 /// <item><c>--demo</c>: 見本のデータで画面を出す。<c>--scenario stale</c> で、一覧の更新に失敗した場面にする。</item>
-/// <item><c>--dialog 名前</c>: 見本のダイアログを出す（new、edit、password、hostkey、hostkey-changed、certificate、delete）。</item>
+/// <item><c>--dialog 名前</c>: 見本のダイアログを出す（new、edit、quick、password、passphrase、hostkey、hostkey-changed、certificate、delete）。</item>
 /// <item><c>--theme light|dark</c>: ライト・ダークを決める（省くと Windows の設定に合わせる）。</item>
 /// <item><c>--screenshot ファイル名</c>: 画面写真を PNG で保存して終わる。</item>
 /// <item><c>--size 幅x高さ</c>: ウインドウの中の大きさ（既定 1280x800）。</item>
@@ -68,6 +68,8 @@ internal sealed record AppOptions
                         {
                             "new" => DemoDialog.NewConnection,
                             "edit" => DemoDialog.EditConnection,
+                            "quick" => DemoDialog.QuickConnect,
+                            "passphrase" => DemoDialog.Passphrase,
                             "password" => DemoDialog.Password,
                             "hostkey" => DemoDialog.HostKey,
                             "hostkey-changed" => DemoDialog.ChangedHostKey,

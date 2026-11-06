@@ -204,7 +204,7 @@ public sealed class ConnectionListViewModel : ObservableObject
     }
 
     /// <summary>
-    /// 保存しない接続先（クイック接続）を加える。同じサーバー・同じユーザーのものがあれば、それを返す。
+    /// 保存しない接続先（クイック接続）を加える。同じサーバー・同じユーザーのものがあれば、新しい設定にしてそれを返す。
     /// </summary>
     public ConnectionItemViewModel AddTemporary(ConnectionProfile profile)
     {
@@ -215,7 +215,10 @@ public sealed class ConnectionListViewModel : ObservableObject
             && item.Profile.EffectivePort == profile.EffectivePort
             && string.Equals(item.Profile.UserName, profile.UserName, StringComparison.Ordinal));
         if (existing is not null)
+        {
+            existing.Profile = profile with { Id = existing.Profile.Id };
             return existing;
+        }
         var added = new ConnectionItemViewModel(profile, isTemporary: true);
         _items.Add(added);
         Rebuild();
@@ -309,7 +312,7 @@ public sealed class ConnectionStatusViewModel : ObservableObject
     public string Host { get; private set => SetProperty(ref field, value); } = "";
 
     /// <summary>読み上げ用の説明。</summary>
-    public string AccessibleName => IsConnected ? $"{SecurityText}で {Name}（{Host}）に接続中" : Name;
+    public string AccessibleName => !IsConnected ? Name : Host.Length > 0 ? $"{SecurityText}で {Name}（{Host}）に接続中" : $"{SecurityText}で {Name} に接続中";
 
     /// <summary>接続したことを出す。</summary>
     public void ShowConnected(ConnectionItemViewModel connection)
@@ -320,7 +323,8 @@ public sealed class ConnectionStatusViewModel : ObservableObject
         ShowsInsecure = !connection.IsEncrypted;
         SecurityText = connection.ProtocolLabel + (connection.IsEncrypted ? "・暗号化" : "・暗号化なし");
         Name = connection.Name;
-        Host = connection.Host;
+        // 名前を付けていない接続先は、名前がホスト名なので、2 回並べない
+        Host = string.Equals(connection.Name, connection.Host, StringComparison.OrdinalIgnoreCase) ? "" : connection.Host;
         OnPropertyChanged(nameof(AccessibleName));
     }
 

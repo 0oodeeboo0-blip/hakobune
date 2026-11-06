@@ -8,6 +8,14 @@
     xmlns:views="using:Hakobune.App.Views"
     Language="ja-JP">
 
+    <UserControl.KeyboardAccelerators>
+        <!--  FFFTP と同じ: Ctrl+Q でクイック接続  -->
+        <KeyboardAccelerator
+            Key="Q"
+            Invoked="OnQuickConnectInvoked"
+            Modifiers="Control" />
+    </UserControl.KeyboardAccelerators>
+
     <Grid x:Name="Root" Background="{ThemeResource SolidBackgroundFillColorBaseBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="48" />
@@ -213,6 +221,14 @@
                             <MenuFlyoutItem Command="{x:Bind ViewModel.NewConnectionCommand}" Text="新しい接続…">
                                 <MenuFlyoutItem.Icon>
                                     <FontIcon Glyph="&#xE710;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem
+                                Command="{x:Bind ViewModel.QuickConnectCommand}"
+                                KeyboardAcceleratorTextOverride="Ctrl+Q"
+                                Text="クイック接続…">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE703;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
                             <MenuFlyoutItem Command="{x:Bind ViewModel.DisconnectCommand}" Text="切断">
@@ -464,26 +480,27 @@
                                                                         Fill="{ThemeResource TextFillColorSecondaryBrush}" />
                                                                 </Canvas>
                                                             </Grid>
-                                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                            <!--  1 行目: 名前（と暗号化なしの印）、2 行目: 方式とホスト  -->
+                                                            <Grid
+                                                                Grid.Column="1"
+                                                                VerticalAlignment="Center"
+                                                                ColumnSpacing="6">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*" />
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <Grid.RowDefinitions>
+                                                                    <RowDefinition Height="Auto" />
+                                                                    <RowDefinition Height="Auto" />
+                                                                </Grid.RowDefinitions>
                                                                 <TextBlock
                                                                     FontWeight="{x:Bind helpers:Ui.SemiBoldIf(IsSelected), Mode=OneWay}"
                                                                     Text="{x:Bind Name, Mode=OneWay}"
                                                                     TextTrimming="CharacterEllipsis" />
-                                                                <TextBlock
-                                                                    FontSize="12"
-                                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                                    Text="{x:Bind Subtitle, Mode=OneWay}"
-                                                                    TextTrimming="CharacterEllipsis" />
-                                                            </StackPanel>
-                                                            <!--  暗号化なしの印と、接続中の印  -->
-                                                            <StackPanel
-                                                                Grid.Column="2"
-                                                                VerticalAlignment="Center"
-                                                                Orientation="Horizontal"
-                                                                Spacing="8">
                                                                 <Border
-                                                                    Height="20"
-                                                                    Padding="6,0"
+                                                                    Grid.Column="1"
+                                                                    Height="18"
+                                                                    Padding="5,0"
                                                                     VerticalAlignment="Center"
                                                                     Background="{ThemeResource HakobuneWarningTagBackgroundBrush}"
                                                                     CornerRadius="4"
@@ -495,6 +512,16 @@
                                                                         Foreground="{ThemeResource HakobuneWarningTagTextBrush}"
                                                                         Text="暗号化なし" />
                                                                 </Border>
+                                                                <TextBlock
+                                                                    Grid.Row="1"
+                                                                    Grid.ColumnSpan="2"
+                                                                    FontSize="12"
+                                                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                                    Text="{x:Bind Subtitle, Mode=OneWay}"
+                                                                    TextTrimming="CharacterEllipsis" />
+                                                            </Grid>
+                                                            <!--  接続中の印  -->
+                                                            <Grid Grid.Column="2" VerticalAlignment="Center">
                                                                 <Ellipse
                                                                     Width="8"
                                                                     Height="8"
@@ -509,7 +536,7 @@
                                                                     VerticalAlignment="Center"
                                                                     IsActive="{x:Bind IsConnecting, Mode=OneWay}"
                                                                     Visibility="{x:Bind IsConnecting, Mode=OneWay}" />
-                                                            </StackPanel>
+                                                            </Grid>
                                                         </Grid>
                                                     </Button>
                                                 </Grid>

@@ -336,4 +336,32 @@ public sealed class MainViewModelConnectionTests : IDisposable
         Assert.True(main.IsConnected);
         Assert.Equal(1, _prompts.PasswordQuestions);
     }
+
+    [Fact]
+    public async Task The_quick_connect_dialog_connects_without_saving()
+    {
+        using var main = Create();
+        var profile = new ConnectionProfile { Protocol = ConnectionProtocol.Sftp, Host = "example.com", UserName = "web" };
+        _dialogs.QuickConnects.Enqueue(new ConnectionEditResult(profile, "right", SavePassword: false));
+
+        await main.QuickConnectCommand.ExecuteAsync(null);
+
+        Assert.True(main.IsConnected);
+        Assert.True(Assert.Single(main.Connections.Items).IsTemporary);
+        Assert.Null(_secrets.Read(profile.Id));
+        // 名前を付けていないので、タイトルバーにホスト名を 2 回並べない
+        Assert.Equal("example.com", main.Connection.Name);
+        Assert.Equal("", main.Connection.Host);
+    }
+
+    [Fact]
+    public void With_no_connections_the_server_side_explains_how_to_add_one()
+    {
+        using var main = Create();
+        Assert.Contains("新しい接続", main.Remote.EmptyHint, StringComparison.Ordinal);
+
+        main.Connections.Add(new ConnectionProfile { Name = "ショップ", Host = "example.com", UserName = "web" });
+
+        Assert.Equal("左の接続先を選ぶと、ここにサーバーのファイルが出ます", main.Remote.EmptyHint);
+    }
 }

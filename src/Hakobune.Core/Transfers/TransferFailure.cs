@@ -50,6 +50,12 @@ public enum FailureReason
     /// <summary>ログインできない。</summary>
     AuthenticationFailed,
 
+    /// <summary>秘密鍵のパスフレーズが要る（入っていない、または違う）。</summary>
+    KeyPassphraseRequired,
+
+    /// <summary>秘密鍵のファイルを読めない（形式が違うなど）。</summary>
+    KeyFileUnreadable,
+
     /// <summary>サーバーの証明書を信頼できない（なりすましの恐れ）。</summary>
     CertificateRejected,
 

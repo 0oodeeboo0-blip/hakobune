@@ -28,6 +28,8 @@ public static class DisplayText
             FailureReason.CannotCreateFile => "ファイルを作れません（名前か権限を確かめてください）",
             FailureReason.NameConflictsWithDirectory => "同じ名前のフォルダがあります",
             FailureReason.AuthenticationFailed => "ログインできません（ユーザー名かパスワードを確かめてください）",
+            FailureReason.KeyPassphraseRequired => "秘密鍵のパスフレーズが違うか、入っていません",
+            FailureReason.KeyFileUnreadable => "秘密鍵のファイルを読めません（形式を確かめてください）",
             FailureReason.CertificateRejected => "サーバーの証明書（鍵）を信頼できません",
             FailureReason.SecureConnectionFailed => "暗号化した接続を始められません",
             FailureReason.VerificationFailed => "転送後の照合で大きさが合いません",

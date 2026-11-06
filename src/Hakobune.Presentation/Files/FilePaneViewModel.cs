@@ -252,7 +252,18 @@ public sealed class FilePaneViewModel : ObservableObject
     }
 
     /// <summary>行がないときの補足。</summary>
-    public string EmptyHint => !HasSource && _busyText is null && Kind == PaneKind.Remote ? "左の接続先を選ぶと、ここにサーバーのファイルが出ます" : "";
+    public string EmptyHint => !HasSource && _busyText is null && Kind == PaneKind.Remote ? DisconnectedHint : "";
+
+    /// <summary>接続していないときの補足（接続先がまだ無いときは、作り方を案内する）。</summary>
+    public string DisconnectedHint
+    {
+        get;
+        set
+        {
+            if (SetProperty(ref field, value ?? ""))
+                OnPropertyChanged(nameof(EmptyHint));
+        }
+    } = "左の接続先を選ぶと、ここにサーバーのファイルが出ます";
 
     /// <summary>上のフォルダへ行けるか。</summary>
     public bool CanGoUp => _hasLoaded && _source?.GetParent(CurrentPath) is not null;

@@ -101,6 +101,36 @@ public class ConnectionServiceTests
     }
 
     [Fact]
+    public async Task A_locked_key_asks_for_its_passphrase_once_per_run()
+    {
+        var (service, server, prompts, _, _) = Create();
+        server.KeyPassphrase = "open sesame";
+        prompts.Passphrases.Enqueue("typo");
+        prompts.Passphrases.Enqueue("open sesame");
+        var profile = Profile with { PrivateKeyPath = "/home/me/.ssh/id_ed25519" };
+
+        var first = await service.ConnectAsync(profile, cancellationToken: TestContext.Current.CancellationToken);
+        var second = await service.ConnectAsync(profile, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(first.Succeeded && second.Succeeded);
+        Assert.Equal(new[] { false, true }, prompts.PassphraseQuestions.ToArray());
+        Assert.Equal(0, prompts.PasswordQuestions);
+        await first.DisposeQuietlyAsync();
+        await second.DisposeQuietlyAsync();
+    }
+
+    [Fact]
+    public async Task Not_entering_the_passphrase_cancels()
+    {
+        var (service, server, _, _, _) = Create();
+        server.KeyPassphrase = "open sesame";
+
+        var result = await service.ConnectAsync(Profile with { PrivateKeyPath = "/home/me/.ssh/id_ed25519" }, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.IsCancelled);
+    }
+
+    [Fact]
     public async Task Not_entering_a_password_cancels()
     {
         var (service, server, _, _, _) = Create();

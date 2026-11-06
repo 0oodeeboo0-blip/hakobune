@@ -20,6 +20,9 @@ public interface IConnectionDialogs
     /// <summary>接続先を作る（<paramref name="existing"/> が null）か、直す。やめたら null。</summary>
     Task<ConnectionEditResult?> EditAsync(ConnectionProfile? existing, bool hasSavedPassword);
 
+    /// <summary>保存せずに接続する先（クイック接続）を聞く。やめたら null。</summary>
+    Task<ConnectionEditResult?> AskQuickConnectAsync();
+
     /// <summary>接続先を消してよいか聞く。</summary>
     Task<bool> ConfirmDeleteAsync(ConnectionProfile profile);
 }
@@ -43,16 +46,18 @@ public sealed class ConnectionEditorViewModel : ObservableObject
 
     /// <summary>
     /// 画面を作る。<paramref name="profile"/> が null なら新しい接続先。<paramref name="hasSavedPassword"/> は、保存したパスワードがあるか。
+    /// <paramref name="quickConnect"/> なら、保存せずに接続する（表示名やパスワードの保存は聞かない）。
     /// </summary>
-    public ConnectionEditorViewModel(ConnectionProfile? profile = null, bool hasSavedPassword = false)
+    public ConnectionEditorViewModel(ConnectionProfile? profile = null, bool hasSavedPassword = false, bool quickConnect = false)
     {
         var source = profile ?? new ConnectionProfile();
         _id = source.Id;
         _maxConcurrency = source.MaxConcurrency;
         IsNew = profile is null;
+        IsQuickConnect = quickConnect;
         HasSavedPassword = hasSavedPassword;
         // 前に「保存しない」を選んだ接続先は、そのまま保存しないでおく
-        SavePassword = IsNew || hasSavedPassword;
+        SavePassword = !quickConnect && (IsNew || hasSavedPassword);
         Name = source.Name;
         Group = source.Group;
         ProtocolIndex = Math.Max(0, Array.IndexOf(Protocols, source.Protocol));
@@ -77,11 +82,17 @@ public sealed class ConnectionEditorViewModel : ObservableObject
     /// <summary>新しい接続先か。</summary>
     public bool IsNew { get; }
 
+    /// <summary>保存せずに接続するか（クイック接続）。</summary>
+    public bool IsQuickConnect { get; }
+
+    /// <summary>表示名・まとまり・パスワードの保存の欄を出すか。</summary>
+    public bool ShowsSaveOptions => !IsQuickConnect;
+
     /// <summary>画面の見出し。</summary>
-    public string Title => IsNew ? "新しい接続" : "接続先の編集";
+    public string Title => IsQuickConnect ? "クイック接続" : IsNew ? "新しい接続" : "接続先の編集";
 
     /// <summary>決定のボタンの文字。</summary>
-    public string PrimaryButtonText => IsNew ? "保存して接続" : "保存";
+    public string PrimaryButtonText => IsQuickConnect ? "接続" : IsNew ? "保存して接続" : "保存";
 
     /// <summary>保存したパスワードがあるか。</summary>
     public bool HasSavedPassword { get; }
@@ -235,7 +246,7 @@ public sealed class ConnectionEditorViewModel : ObservableObject
 
     /// <summary>入力した内容を結果にする。</summary>
     public ConnectionEditResult ToResult() =>
-        new(ToProfile(), Password.Length > 0 ? Password : null, SavePassword);
+        new(ToProfile(), Password.Length > 0 ? Password : null, SavePassword && !IsQuickConnect);
 
     private int? ParsePort()
     {
