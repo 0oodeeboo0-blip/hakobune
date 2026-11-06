@@ -16,6 +16,7 @@ public sealed class MainViewModelTransferTests : IDisposable
     private readonly ScriptedPrompts _prompts = new();
     private readonly ScriptedDialogs _dialogs = new();
     private readonly ScriptedTransferDialogs _transferDialogs = new();
+    private readonly ScriptedSyncDialogs _syncDialogs = new();
     private readonly MemorySecretStore _secrets = new();
     private readonly ConnectionProfile _profile = new() { Name = "ショップ", Host = "example.com", UserName = "web" };
 
@@ -50,7 +51,7 @@ public sealed class MainViewModelTransferTests : IDisposable
 
     private async Task<MainViewModel> ConnectAsync()
     {
-        var services = new AppServices(DataDirectory, _secrets, _prompts, _dialogs, _transferDialogs);
+        var services = new AppServices(DataDirectory, _secrets, _prompts, _dialogs, _transferDialogs, SyncDialogs: _syncDialogs);
         var connector = new ConnectionService(TrustStore.InMemory(), _secrets, _prompts, _server.Builder);
         var main = new MainViewModel(
             new FilePaneViewModel(PaneKind.Local),
@@ -77,11 +78,88 @@ public sealed class MainViewModelTransferTests : IDisposable
         }
     }
 
-    private void WriteLocal(string relativePath, string content)
+    private void WriteLocal(string relativePath, string content, DateTimeOffset? modified = null)
     {
         var path = Path.Combine(LocalFolder, relativePath);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, content);
+        if (modified is { } time)
+            File.SetLastWriteTimeUtc(path, time.UtcDateTime);
+    }
+
+    [Fact]
+    public async Task Sync_sends_only_what_changed_and_can_delete_what_is_only_on_the_server()
+    {
+        var earlier = DateTimeOffset.UtcNow.AddDays(-1);
+        _server.Folders["/home/web"] =
+        [
+            new RemoteItem("notes.txt", "/home/web/notes.txt", RemoteItemType.File, 4, earlier),
+            new RemoteItem("index.html", "/home/web/index.html", RemoteItemType.File, 5, earlier),
+            new RemoteItem("old.html", "/home/web/old.html", RemoteItemType.File, 3, earlier),
+        ];
+        _server.Files["/home/web/index.html"] = "hello"u8.ToArray();
+        _server.Files["/home/web/old.html"] = "old"u8.ToArray();
+        WriteLocal("notes.txt", "memo", earlier); // 同じ
+        WriteLocal("index.html", "hello again"); // 直した
+        WriteLocal(Path.Combine("css", "site.css"), "body {}"); // 新しい
+        WriteLocal("Thumbs.db", "thumbs"); // 送らない
+        _syncDialogs.Choose = sync => sync.DeleteOnlyOnTarget = true;
+        using var main = await ConnectAsync();
+        await main.Local.RefreshAsync();
+        Assert.True(main.CanSync);
+        Assert.True(main.SyncUploadCommand.CanExecute(null));
+
+        await main.SyncUploadCommand.ExecuteAsync(null);
+        await WaitForAsync(() => main.PendingTransferCount == 0 && _server.Operations.Contains("rm /home/web/old.html"));
+
+        var review = Assert.Single(_syncDialogs.Reviews);
+        Assert.Equal(new[] { "css/site.css", "index.html" }, review.SendRows.Select(row => row.Path).ToArray());
+        Assert.Equal(1, review.Result?.SameCount);
+        Assert.Equal(1, review.Result?.ExcludedCount);
+        Assert.Equal("hello again", Encoding.UTF8.GetString(_server.Files["/home/web/index.html"]));
+        Assert.Equal("body {}", Encoding.UTF8.GetString(_server.Files["/home/web/css/site.css"]));
+        Assert.False(_server.Files.ContainsKey("/home/web/Thumbs.db"));
+        Assert.Equal(3, main.Transfers.TotalCount);
+    }
+
+    [Fact]
+    public async Task Sync_can_receive_only_what_changed_and_never_deletes_on_this_computer()
+    {
+        var earlier = DateTimeOffset.UtcNow.AddHours(-2);
+        _server.Folders["/home/web"] =
+        [
+            new RemoteItem("notes.txt", "/home/web/notes.txt", RemoteItemType.File, 4, earlier),
+            new RemoteItem("news.txt", "/home/web/news.txt", RemoteItemType.File, 4, earlier),
+        ];
+        _server.Files["/home/web/news.txt"] = "news"u8.ToArray();
+        WriteLocal("notes.txt", "memo", earlier);
+        WriteLocal("mine.txt", "mine");
+        // 受け取るときは、消すことを選んでも、パソコンのものは消さない
+        _syncDialogs.Choose = sync => sync.DeleteOnlyOnTarget = true;
+        using var main = await ConnectAsync();
+        await main.Local.RefreshAsync();
+
+        await main.SyncDownloadCommand.ExecuteAsync(null);
+        await WaitForAsync(() => main.PendingTransferCount == 0 && File.Exists(Path.Combine(LocalFolder, "news.txt")));
+
+        Assert.Equal("news", File.ReadAllText(Path.Combine(LocalFolder, "news.txt")));
+        Assert.Equal("mine", File.ReadAllText(Path.Combine(LocalFolder, "mine.txt")));
+        Assert.Equal(1, main.Transfers.TotalCount);
+    }
+
+    [Fact]
+    public async Task Stopping_the_sync_review_sends_nothing()
+    {
+        WriteLocal("index.html", "hello");
+        _syncDialogs.Answer = false;
+        using var main = await ConnectAsync();
+        await main.Local.RefreshAsync();
+
+        await main.SyncUploadCommand.ExecuteAsync(null);
+
+        Assert.Single(_syncDialogs.Reviews);
+        Assert.Equal(0, main.Transfers.TotalCount);
+        Assert.False(_server.Files.ContainsKey("/home/web/index.html"));
     }
 
     [Fact]

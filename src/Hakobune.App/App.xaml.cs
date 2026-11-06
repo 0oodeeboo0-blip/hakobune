@@ -43,7 +43,7 @@ public partial class App : Application
             else
             {
                 var services = new AppServices(
-                    DataDirectory, new CredentialStore(), dialogs, dialogs, dialogs, dialogs, new RecycleBinFileOperations(), dialogs);
+                    DataDirectory, new CredentialStore(), dialogs, dialogs, dialogs, dialogs, new RecycleBinFileOperations(), dialogs, dialogs);
                 var settings = await AppSettings.LoadAsync(services.SettingsFile);
                 viewModel = await MainViewModel.CreateAsync(services, null, settings);
             }
@@ -86,7 +86,7 @@ public partial class App : Application
         if (Options.Dialog is { } dialog)
         {
             // ダイアログは閉じるまで終わらないので待たない。出るまで少し待つ。
-            _ = DemoDialogs.ShowAsync(dialog, dialogs, dialogs, dialogs, dialogs, dialogs, viewModel);
+            _ = DemoDialogs.ShowAsync(dialog, dialogs, dialogs, dialogs, dialogs, dialogs, viewModel, dialogs);
             return Task.Delay(TimeSpan.FromSeconds(1));
         }
         if (Options.ConnectUrl is { } url)

@@ -55,7 +55,9 @@ internal sealed class TransferLogWriter
                     _completed++;
                     _bytes += Math.Max(0, item.TotalBytes);
                 }
-                if (item.IsFolder)
+                if (item.IsDelete)
+                    _log.Success($"サーバーから消しました: {target}", _source);
+                else if (item.IsFolder)
                     _log.Success($"フォルダを作りました: {target}", _source);
                 else
                     _log.Success($"{(upload ? "送りました" : "受け取りました")}: {target}（{DisplayText.Size(Math.Max(0, item.TotalBytes))}）", _source);
@@ -63,7 +65,9 @@ internal sealed class TransferLogWriter
             case TransferState.Failed:
                 lock (_gate)
                     _failed++;
-                var failed = item.IsFolder ? "フォルダを作れませんでした" : upload ? "送れませんでした" : "受け取れませんでした";
+                var failed = item.IsDelete ? "サーバーから消せませんでした"
+                    : item.IsFolder ? "フォルダを作れませんでした"
+                    : upload ? "送れませんでした" : "受け取れませんでした";
                 _log.Error($"{failed}: {target}: {Reason(item)}", _source);
                 break;
             case TransferState.WaitingToRetry:
@@ -73,7 +77,8 @@ internal sealed class TransferLogWriter
                 _log.Info($"取り消しました: {target}", _source);
                 break;
             case TransferState.Skipped:
-                _log.Info($"{(upload ? "送りませんでした" : "受け取りませんでした")}: {target}{(item.Note is { Length: > 0 } note ? $"（{note}）" : "")}", _source);
+                var skipped = item.IsDelete ? "消しませんでした" : upload ? "送りませんでした" : "受け取りませんでした";
+                _log.Info($"{skipped}: {target}{(item.Note is { Length: > 0 } note ? $"（{note}）" : "")}", _source);
                 break;
         }
     }

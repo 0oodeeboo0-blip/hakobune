@@ -275,6 +275,12 @@
                                         Foreground="{ThemeResource HakobuneAccentTextBrush}"
                                         Glyph="&#xE74B;"
                                         Visibility="{x:Bind IsDownload}" />
+                                    <!--  サーバーから消す（同期）  -->
+                                    <FontIcon
+                                        FontSize="11"
+                                        Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                        Glyph="&#xE74D;"
+                                        Visibility="{x:Bind IsDelete}" />
                                 </Grid>
 
                                 <!--  名前と送り先  -->

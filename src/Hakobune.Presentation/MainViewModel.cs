@@ -24,6 +24,7 @@ namespace Hakobune.Presentation;
 /// <param name="FileDialogs">新しいフォルダや削除のときに聞く画面。null ならその操作はできない。</param>
 /// <param name="LocalFiles">パソコンのファイルの操作（Windows ではごみ箱を使う）。null ならそのまま消す。</param>
 /// <param name="SettingsDialogs">設定の画面。null なら設定の画面は出さない。</param>
+/// <param name="SyncDialogs">同期の確認の画面。null なら同期はできない。</param>
 public sealed record AppServices(
     string DataDirectory,
     ISecretStore Secrets,
@@ -32,7 +33,8 @@ public sealed record AppServices(
     ITransferDialogs? TransferDialogs = null,
     IFileDialogs? FileDialogs = null,
     ILocalFileOperations? LocalFiles = null,
-    ISettingsDialogs? SettingsDialogs = null)
+    ISettingsDialogs? SettingsDialogs = null,
+    ISyncDialogs? SyncDialogs = null)
 {
     /// <summary>接続先の一覧のファイル。</summary>
     public string ConnectionsFile => Path.Combine(DataDirectory, "connections.json");
@@ -122,6 +124,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         DeleteConnectionCommand = new AsyncRelayCommand<ConnectionItemViewModel>(DeleteConnectionAsync);
         UploadCommand = new AsyncRelayCommand(() => UploadEntriesAsync([.. Local.SelectedRows.Select(row => row.Entry)]), () => CanUpload);
         DownloadCommand = new AsyncRelayCommand(() => DownloadEntriesAsync([.. Remote.SelectedRows.Select(row => row.Entry)]), () => CanDownload);
+        SyncUploadCommand = new AsyncRelayCommand(() => SyncAsync(SyncDirection.Upload), () => CanSync);
+        SyncDownloadCommand = new AsyncRelayCommand(() => SyncAsync(SyncDirection.Download), () => CanSync);
         NewFolderCommand = new AsyncRelayCommand(() => NewFolderAsync(ActivePane), () => CanCreateFolder(ActivePane));
         RenameCommand = new AsyncRelayCommand(() => RenameAsync(ActivePane), () => CanRename(ActivePane));
         DeleteCommand = new AsyncRelayCommand(() => DeleteAsync(ActivePane), () => CanDelete(ActivePane));
@@ -232,6 +236,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>選んだファイルをパソコンへ受け取る（Ctrl+D）。</summary>
     public IAsyncRelayCommand DownloadCommand { get; }
 
+    /// <summary>同期: パソコンのいまのフォルダと比べて、変わったファイルだけサーバーのいまのフォルダへ送る。</summary>
+    public IAsyncRelayCommand SyncUploadCommand { get; }
+
+    /// <summary>同期: サーバーのいまのフォルダと比べて、変わったファイルだけパソコンのいまのフォルダへ受け取る。</summary>
+    public IAsyncRelayCommand SyncDownloadCommand { get; }
+
     /// <summary>操作の対象の側に、新しいフォルダを作る（Ctrl+K）。</summary>
     public IAsyncRelayCommand NewFolderCommand { get; }
 
@@ -273,6 +283,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>ダウンロードできるか（接続していて、サーバー側で何か選んでいて、パソコン側でフォルダを開いている）。</summary>
     public bool CanDownload =>
         _transferController is not null && Local.HasLoaded && Local.CurrentPath.Length > 0 && Remote.SelectedRows.Count > 0;
+
+    /// <summary>同期できるか（接続していて、パソコン側とサーバー側の両方でフォルダを開いている）。</summary>
+    public bool CanSync =>
+        _transferController is not null && _services?.SyncDialogs is not null
+        && Local.HasLoaded && Local.CurrentPath.Length > 0 && Remote.HasLoaded;
 
     /// <summary>まだ終わっていない転送の数。</summary>
     public int PendingTransferCount => _transferController?.PendingCount ?? 0;
@@ -766,6 +781,55 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         Enqueue(controller, plan, Remote);
     }
 
+    // 同期: 左右のいまのフォルダを比べ、確かめてもらってから、変わったものだけ送信待ちに入れる
+    private async Task SyncAsync(SyncDirection direction)
+    {
+        if (!CanSync || _services?.SyncDialogs is not { } dialogs || _transferController is not { } controller
+            || Local.Source is not { } local || Remote.Source is not { } remote)
+            return;
+        var localRoot = Local.CurrentPath;
+        var remoteRoot = Remote.CurrentPath;
+        var exclusions = CurrentExclusions;
+        var host = _connected?.Profile.Host ?? "";
+        var serverText = host.Length > 0 ? $"{host} {remoteRoot}" : remoteRoot;
+        var upload = direction == SyncDirection.Upload;
+        // サーバーの一覧は画面用の接続で取る（転送用の接続には触らない。画面用の接続は RemoteBrowser が 1 つずつ順に使う）
+        var sync = new SyncViewModel(
+            direction,
+            upload ? localRoot : serverText,
+            upload ? serverText : localRoot,
+            (progress, cancellationToken) => upload
+                ? SyncPlanner.PlanAsync(direction, local, localRoot, remote, remoteRoot, exclusions, progress, cancellationToken)
+                : SyncPlanner.PlanAsync(direction, remote, remoteRoot, local, localRoot, exclusions, progress, cancellationToken),
+            _time.LocalTimeZone);
+        sync.Start();
+        bool confirmed;
+        try
+        {
+            confirmed = await dialogs.ReviewSyncAsync(sync).ConfigureAwait(true);
+        }
+        finally
+        {
+            if (sync.IsScanning)
+                sync.Cancel();
+        }
+        if (!confirmed)
+            return;
+        await sync.Planning.ConfigureAwait(true);
+        var requests = sync.BuildRequests();
+        // 確かめているあいだに切断した
+        if (requests.Count == 0 || !ReferenceEquals(controller, _transferController))
+            return;
+        controller.Enqueue(requests);
+        var deletes = requests.Count(request => request.IsDelete);
+        var transfers = requests.Count - deletes;
+        var size = requests.Sum(request => Math.Max(0, request.ExpectedBytes ?? 0));
+        var what = upload
+            ? deletes > 0 ? $"送る {transfers:N0} 件・消す {deletes:N0} 件" : $"送る {transfers:N0} 件"
+            : $"受け取る {transfers:N0} 件";
+        Log.Info($"同期（{(upload ? "パソコン → サーバー" : "サーバー → パソコン")}）: {what}を加えました（{DisplayText.Size(size)}）", _connected?.Name);
+    }
+
     // 依頼を送信待ちに入れる。中を見られなかったフォルダがあれば、選んだ側に知らせる
     private int Enqueue(TransferController controller, TransferPlan plan, FilePaneViewModel from)
     {
@@ -819,6 +883,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     {
         UploadCommand.NotifyCanExecuteChanged();
         DownloadCommand.NotifyCanExecuteChanged();
+        SyncUploadCommand.NotifyCanExecuteChanged();
+        SyncDownloadCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanSync));
         NewFolderCommand.NotifyCanExecuteChanged();
         RenameCommand.NotifyCanExecuteChanged();
         DeleteCommand.NotifyCanExecuteChanged();

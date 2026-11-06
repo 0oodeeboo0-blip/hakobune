@@ -96,6 +96,8 @@ internal sealed record AppOptions
                             "stop" => DemoDialog.StopTransfers,
                             "settings" => DemoDialog.Settings,
                             "settings-exclusions" => DemoDialog.SettingsExclusions,
+                            "sync" => DemoDialog.Sync,
+                            "sync-delete" => DemoDialog.SyncDelete,
                             _ => null,
                         },
                     };

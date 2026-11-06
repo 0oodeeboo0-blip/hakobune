@@ -25,7 +25,8 @@ public sealed record SavedTransferItem(
     string? Note,
     bool SizeVerified = false,
     DateTimeOffset? FinishedAt = null,
-    bool IsFolder = false);
+    bool IsFolder = false,
+    bool IsDelete = false);
 
 /// <summary>送信待ちをファイルに保存し、読み込む。</summary>
 public static class TransferQueueFile

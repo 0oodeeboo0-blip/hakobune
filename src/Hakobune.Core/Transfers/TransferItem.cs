@@ -58,7 +58,8 @@ internal sealed class TransferItem(long sequence, TransferRequest request)
         Note,
         SizeVerified,
         FinishedAt,
-        Request.IsFolder);
+        Request.IsFolder,
+        Request.IsDelete);
 }
 
 /// <summary>IProgress を、呼ばれたその場で処理する。</summary>

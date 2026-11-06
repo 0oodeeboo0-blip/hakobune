@@ -629,4 +629,57 @@ public class TransferSchedulerTests
 
         Assert.Equal(1, result.Summary.Completed);
     }
+
+    [Fact]
+    public async Task Deletes_remove_files_and_folders_and_skip_what_is_already_gone()
+    {
+        var server = new FakeServer();
+        server.Files.CreateDirectory("/www/campaign/images");
+        server.Files.WriteFile("/www/old.html", [1, 2, 3], 0, DateTimeOffset.UtcNow);
+        server.Files.WriteFile("/www/campaign/images/banner.png", [4, 5], 0, DateTimeOffset.UtcNow);
+        var scheduler = new TransferScheduler(server, FastOptions());
+        scheduler.Enqueue(
+        [
+            new TransferRequest(TransferDirection.Upload, "", "/www/old.html", IsDelete: true),
+            new TransferRequest(TransferDirection.Upload, "", "/www/campaign", IsDelete: true),
+            new TransferRequest(TransferDirection.Upload, "", "/www/missing.html", IsDelete: true),
+        ]);
+
+        var result = await scheduler.RunAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(TransferRunOutcome.Finished, result.Outcome);
+        Assert.Equal(2, result.Summary.Completed);
+        Assert.Equal(1, result.Summary.Skipped);
+        Assert.Null(server.Files.GetItem("/www/old.html"));
+        Assert.Null(server.Files.GetItem("/www/campaign"));
+        Assert.Null(server.Files.GetItem("/www/campaign/images/banner.png"));
+        Assert.NotNull(server.Files.GetItem("/www"));
+        Assert.Equal("もうありませんでした", scheduler.GetItems().Single(item => item.RemotePath == "/www/missing.html").Note);
+        Assert.All(scheduler.GetItems(), item => Assert.True(item.IsDelete));
+        // 保存して読み戻しても、消す依頼のまま
+        Assert.All(scheduler.SaveState(), item => Assert.True(item.IsDelete));
+    }
+
+    [Fact]
+    public async Task A_folder_made_earlier_is_made_again_after_it_is_deleted()
+    {
+        using var temp = new TempDirectory();
+        var first = temp.CreateFile("a/x.txt", [1]);
+        var second = temp.CreateFile("a/y.txt", [2]);
+        var server = new FakeServer();
+        // 1 つずつ順に動かす（送る、消す、また送る）
+        var scheduler = new TransferScheduler(server, FastOptions(maxConcurrency: 1));
+        scheduler.Enqueue(
+        [
+            new TransferRequest(TransferDirection.Upload, first, "/www/a/x.txt"),
+            new TransferRequest(TransferDirection.Upload, "", "/www/a", IsDelete: true),
+            new TransferRequest(TransferDirection.Upload, second, "/www/a/y.txt"),
+        ]);
+
+        var result = await scheduler.RunAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(3, result.Summary.Completed);
+        Assert.Null(server.Files.GetItem("/www/a/x.txt"));
+        Assert.Equal(new byte[] { 2 }, server.Files.ReadFile("/www/a/y.txt"));
+    }
 }

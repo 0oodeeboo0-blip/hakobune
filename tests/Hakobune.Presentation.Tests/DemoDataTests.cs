@@ -97,4 +97,20 @@ public class DemoDataTests
         Assert.Equal("SFTP・暗号化", main.Connection.SecurityText);
         Assert.Equal("example.com", main.Connection.Host);
     }
+
+    [Fact]
+    public void The_sync_review_sample_is_ready_at_once()
+    {
+        // 画面写真を撮るまでに比べ終わっている
+        var sync = DemoDialogs.CreateSync();
+
+        Assert.True(sync.HasResult);
+        Assert.Equal("6 件を送る", sync.PrimaryText);
+        Assert.Equal(2, sync.OnlyOnTargetRows.Count);
+        Assert.Single(sync.TargetNewerRows);
+
+        sync.IncludeTargetNewer = true;
+        sync.DeleteOnlyOnTarget = true;
+        Assert.Equal("7 件を送り、2 件を消す", sync.PrimaryText);
+    }
 }

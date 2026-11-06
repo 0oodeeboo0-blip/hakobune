@@ -21,7 +21,7 @@ namespace Hakobune.App.Services;
 /// 接続のときの質問（パスワード、サーバーの鍵、証明書）と、接続先の作成・編集を、ダイアログで聞く。
 /// どのスレッドから呼んでもよい（画面のスレッドに頼んで出す）。
 /// </summary>
-internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, ITransferDialogs, IFileDialogs, ISettingsDialogs
+internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, ITransferDialogs, IFileDialogs, ISettingsDialogs, ISyncDialogs
 {
     private readonly DispatcherQueue _dispatcher;
     private readonly Func<XamlRoot?> _xamlRoot;
@@ -29,6 +29,11 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
 
     // ダイアログは一度に 1 つしか出せない
     private readonly SemaphoreSlim _dialogGate = new(1, 1);
+
+    // ほかの質問が来たら、いったん隠して先を譲るダイアログ（同期の確認）。比べているあいだに、
+    // つなぎ直しでパスワードや鍵を聞くことがあるので、譲らないと互いに待ち続けてしまう
+    private ContentDialog? _yieldable;
+    private bool _yielded;
 
     // 同じ名前のものがあったときに、前に選んだ扱い（次に聞くときの最初の選択にする）
     private ConflictPolicy _lastConflictPolicy = ConflictPolicy.OverwriteIfNewer;
@@ -450,8 +455,13 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
         return completion.Task;
     }
 
-    private async Task<ContentDialogResult> ShowAsync(ContentDialog dialog)
+    private async Task<ContentDialogResult> ShowAsync(ContentDialog dialog, bool yieldable = false)
     {
+        if (!yieldable && _yieldable is { } open)
+        {
+            _yielded = true;
+            open.Hide();
+        }
         await _dialogGate.WaitAsync().ConfigureAwait(true);
         try
         {
@@ -468,12 +478,16 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
                 dialog.RequestedTheme = content.ActualTheme;
                 content.ActualThemeChanged += follow;
             }
+            if (yieldable)
+                _yieldable = dialog;
             try
             {
                 return await dialog.ShowAsync();
             }
             finally
             {
+                if (yieldable)
+                    _yieldable = null;
                 if (content is not null)
                     content.ActualThemeChanged -= follow;
             }
@@ -498,6 +512,58 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
             dialog.Resources["ContentDialogMaxWidth"] = 640d;
             await ShowAsync(dialog).ConfigureAwait(true);
             return true;
+        });
+
+    public Task<bool> ReviewSyncAsync(SyncViewModel sync) =>
+        OnUiThreadAsync(async () =>
+        {
+            var dialog = new ContentDialog
+            {
+                Title = sync.Title,
+                Content = new SyncView(sync),
+                PrimaryButtonText = sync.PrimaryText,
+                IsPrimaryButtonEnabled = sync.CanConfirm,
+                CloseButtonText = "やめる",
+                DefaultButton = sync.DeleteOnlyOnTarget ? ContentDialogButton.Close : ContentDialogButton.Primary,
+            };
+            // 一覧を並べるので、ふつうのダイアログより広く、高くする（ウインドウが小さければ、中を送って見る）
+            dialog.Resources["ContentDialogMaxWidth"] = 780d;
+            dialog.Resources["ContentDialogMaxHeight"] = 960d;
+            PropertyChangedEventHandler onChanged = (_, e) =>
+            {
+                switch (e.PropertyName)
+                {
+                    case nameof(SyncViewModel.PrimaryText):
+                        dialog.PrimaryButtonText = sync.PrimaryText;
+                        break;
+                    case nameof(SyncViewModel.CanConfirm):
+                        dialog.IsPrimaryButtonEnabled = sync.CanConfirm;
+                        break;
+                    case nameof(SyncViewModel.DeleteOnlyOnTarget):
+                        // 消すものを選んだら、Enter でうっかり決めないようにする
+                        dialog.DefaultButton = sync.DeleteOnlyOnTarget ? ContentDialogButton.Close : ContentDialogButton.Primary;
+                        break;
+                }
+            };
+            sync.PropertyChanged += onChanged;
+            try
+            {
+                while (true)
+                {
+                    var result = await ShowAsync(dialog, yieldable: true).ConfigureAwait(true);
+                    if (_yielded)
+                    {
+                        // 先に出した質問が終わってから、もう一度出す（比べているのは続いている）
+                        _yielded = false;
+                        continue;
+                    }
+                    return result == ContentDialogResult.Primary && sync.CanConfirm;
+                }
+            }
+            finally
+            {
+                sync.PropertyChanged -= onChanged;
+            }
         });
 
     private static TextBlock Paragraph(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap };

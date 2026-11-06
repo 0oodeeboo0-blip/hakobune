@@ -12,6 +12,9 @@ internal interface ITransferSink
     void ReportProgress(TransferItem item, long transferredBytes);
 
     Task EnsureRemoteDirectoryAsync(IRemoteSession session, string directory, CancellationToken cancellationToken);
+
+    /// <summary>サーバーのフォルダを消したので、作ってあると覚えていたもの（中も含む）を忘れる。</summary>
+    void ForgetRemoteDirectory(string path);
 }
 
 /// <summary>1 回の試行の結果（完了またはスキップ）。失敗は例外で知らせる。</summary>
@@ -31,11 +34,36 @@ internal sealed class TransferExecutor(TransferOptions options)
 
     public Task<ExecutionResult> ExecuteAsync(TransferItem item, IRemoteSession session, ITransferSink sink, CancellationToken cancellationToken)
     {
+        if (item.Request.IsDelete)
+            return DeleteAsync(item, session, sink, cancellationToken);
         if (item.Request.IsFolder)
             return CreateFolderAsync(item, session, sink, cancellationToken);
         return item.Request.Direction == TransferDirection.Upload
             ? UploadAsync(item, session, sink, cancellationToken)
             : DownloadAsync(item, session, sink, cancellationToken);
+    }
+
+    // サーバーのファイルかフォルダを消す（同期で「サーバーからも消す」を選んだとき）。もう無ければ、それでよい
+    private static async Task<ExecutionResult> DeleteAsync(TransferItem item, IRemoteSession session, ITransferSink sink, CancellationToken cancellationToken)
+    {
+        var request = item.Request;
+        sink.SetTotalBytes(item, 0);
+        if (request.Direction != TransferDirection.Upload)
+            throw new NotSupportedException("パソコン側を消す依頼には対応していません。");
+        var existing = await session.GetItemAsync(request.RemotePath, cancellationToken).ConfigureAwait(false);
+        if (existing is null)
+            return ExecutionResult.Skipped("もうありませんでした");
+        sink.MarkTargetWritten(item);
+        if (existing.IsDirectory)
+        {
+            await session.DeleteDirectoryAsync(request.RemotePath, cancellationToken).ConfigureAwait(false);
+            sink.ForgetRemoteDirectory(request.RemotePath);
+        }
+        else
+        {
+            await session.DeleteFileAsync(request.RemotePath, cancellationToken).ConfigureAwait(false);
+        }
+        return ExecutionResult.Completed(sizeVerified: false);
     }
 
     // 空のフォルダを、送り先にも作る（すでにあれば何もしない）

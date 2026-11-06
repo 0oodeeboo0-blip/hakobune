@@ -75,6 +75,25 @@ public class TransferQueueFileTests
     }
 
     [Fact]
+    public async Task Requests_to_delete_on_the_server_are_saved_as_such()
+    {
+        using var temp = new TempDirectory();
+        var cancellationToken = TestContext.Current.CancellationToken;
+        var saved = new SavedTransferItem(
+            Guid.NewGuid(), TransferDirection.Upload, "", "/www/old.html", ConflictPolicy.Overwrite,
+            TransferState.Queued, 0, null, null, null, null,
+            HasWrittenTarget: false, TotalBytes: 0, TransferredBytes: 0, Note: null, IsDelete: true);
+        var file = Path.Combine(temp.Path, "queue.json");
+
+        await TransferQueueFile.SaveAsync(file, [saved], cancellationToken);
+        var loaded = Assert.Single(await TransferQueueFile.LoadAsync(file, cancellationToken));
+
+        Assert.True(loaded.IsDelete);
+        Assert.False(loaded.IsFolder);
+        Assert.Equal(saved, loaded);
+    }
+
+    [Fact]
     public async Task Files_saved_before_new_fields_were_added_still_load()
     {
         using var temp = new TempDirectory();

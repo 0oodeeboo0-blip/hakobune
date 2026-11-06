@@ -230,11 +230,12 @@ internal sealed class FakeTransferSource : ITransferSource
         DateTimeOffset? retryAt = null,
         DateTimeOffset? finishedAt = null,
         bool sizeVerified = false,
-        TransferDirection direction = TransferDirection.Upload)
+        TransferDirection direction = TransferDirection.Upload,
+        bool isDelete = false)
     {
         var snapshot = new TransferItemSnapshot(
-            Guid.NewGuid(), _items.Count, direction, @"C:\Users\user\Sites\" + name, "/var/www/html/" + name,
-            state, failedAttempts, failure, retryAt, total, transferred, null, sizeVerified, finishedAt);
+            Guid.NewGuid(), _items.Count, direction, isDelete ? "" : @"C:\Users\user\Sites\" + name, "/var/www/html/" + name,
+            state, failedAttempts, failure, retryAt, total, transferred, null, sizeVerified, finishedAt, IsDelete: isDelete);
         _items.Add(snapshot);
         ItemChanged?.Invoke(this, snapshot);
         return snapshot;

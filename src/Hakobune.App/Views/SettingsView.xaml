@@ -113,7 +113,7 @@
             <FontIcon
                 VerticalAlignment="Center"
                 FontSize="16"
-                Glyph="&#xE8F8;" />
+                Glyph="&#xE71C;" />
             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                 <TextBlock Text="送らないファイルを使う" />
                 <TextBlock

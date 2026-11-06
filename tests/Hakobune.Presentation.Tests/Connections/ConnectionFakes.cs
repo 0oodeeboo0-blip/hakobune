@@ -295,6 +295,24 @@ internal sealed class ScriptedTransferDialogs : ITransferDialogs
     }
 }
 
+/// <summary>比べ終わるのを待ってから、決めておいたとおりに選んで答える、同期の確認。</summary>
+internal sealed class ScriptedSyncDialogs : ISyncDialogs
+{
+    public Action<SyncViewModel>? Choose { get; set; }
+
+    public bool Answer { get; set; } = true;
+
+    public List<SyncViewModel> Reviews { get; } = [];
+
+    public async Task<bool> ReviewSyncAsync(SyncViewModel sync)
+    {
+        Reviews.Add(sync);
+        await sync.Planning;
+        Choose?.Invoke(sync);
+        return Answer;
+    }
+}
+
 /// <summary>答えを決めておける、ファイルの操作のときの質問。</summary>
 internal sealed class ScriptedFileDialogs : IFileDialogs
 {

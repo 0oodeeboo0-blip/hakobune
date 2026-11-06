@@ -57,6 +57,12 @@ public enum DemoDialog
 
     /// <summary>設定の「送らないファイル」のところ。</summary>
     SettingsExclusions,
+
+    /// <summary>同期の確認（比べ終わったところ）。</summary>
+    Sync,
+
+    /// <summary>同期の確認で、サーバーのほうが新しいものも送り、サーバーにだけあるものを消すと選んだところ。</summary>
+    SyncDelete,
 }
 
 /// <summary>見本のダイアログに出す中身。</summary>
@@ -106,6 +112,47 @@ public static class DemoDialogs
     /// <summary>見本の設定の保存先。</summary>
     public const string DataDirectory = @"C:\Users\user\AppData\Roaming\Hakobune";
 
+    /// <summary>同期の確認に出す、比べ終わった結果（見本の画面のパソコンのフォルダと、サーバーのフォルダ）。</summary>
+    public static SyncPlan SyncPlan { get; } = CreateSyncPlan();
+
+    /// <summary>見本の同期の確認を作る（すぐに比べ終わる）。</summary>
+    public static SyncViewModel CreateSync()
+    {
+        var plan = SyncPlan;
+        var sync = new SyncViewModel(SyncDirection.Upload, plan.SourceRoot, $"{Profile.Host} {plan.TargetRoot}", (_, _) => Task.FromResult(plan));
+        sync.Start();
+        return sync;
+    }
+
+    private static SyncPlan CreateSyncPlan()
+    {
+        const string local = @"C:\Users\user\Sites\shop";
+        const string remote = "/var/www/html";
+        static DateTimeOffset At(int year, int month, int day, int hour, int minute) =>
+            new(new DateTime(year, month, day, hour, minute, 0, DateTimeKind.Local));
+        static string Name(string relative) => relative[(relative.LastIndexOf('/') + 1)..];
+        static FileEntry Local(string relative, long size, DateTimeOffset modified) =>
+            new(Name(relative), local + "\\" + relative.Replace('/', '\\'), FileEntryType.File, size, modified);
+        static FileEntry Remote(string relative, long size, DateTimeOffset modified) =>
+            new(Name(relative), remote + "/" + relative, FileEntryType.File, size, modified, "-rw-r--r--");
+
+        SyncItem[] items =
+        [
+            new(SyncChange.OnlyOnTarget, "campaign-2025", null,
+                new FileEntry("campaign-2025", remote + "/campaign-2025", FileEntryType.Directory, 0, At(2025, 12, 1, 9, 30), "drwxr-xr-x")),
+            new(SyncChange.TargetNewer, "contact.html", Local("contact.html", 6_120, At(2026, 11, 2, 14, 5)), Remote("contact.html", 6_388, At(2026, 11, 5, 9, 41))),
+            new(SyncChange.Changed, "css/site.css", Local("css/site.css", 18_204, At(2026, 11, 6, 11, 58)), Remote("css/site.css", 17_950, At(2026, 10, 28, 16, 20))),
+            new(SyncChange.New, "downloads", new FileEntry("downloads", local + "\\downloads", FileEntryType.Directory, 0, At(2026, 11, 6, 10, 2)), null),
+            new(SyncChange.OnlyOnTarget, "images/old-banner.png", null, Remote("images/old-banner.png", 88_412, At(2025, 7, 3, 18, 12))),
+            new(SyncChange.New, "images/商品_12.jpg", Local("images/商品_12.jpg", 248_310, At(2026, 11, 6, 11, 40)), null),
+            new(SyncChange.New, "images/商品_13.jpg", Local("images/商品_13.jpg", 231_877, At(2026, 11, 6, 11, 41)), null),
+            new(SyncChange.Changed, "index.html", Local("index.html", 12_840, At(2026, 11, 6, 12, 10)), Remote("index.html", 12_402, At(2026, 11, 1, 18, 30))),
+            new(SyncChange.New, "news/2026-11.html", Local("news/2026-11.html", 8_402, At(2026, 11, 6, 12, 2)), null),
+        ];
+        return new SyncPlan(
+            SyncDirection.Upload, local, remote, items, SameCount: 128, ExcludedCount: 3, UnreadableFolders: [], TooMany: false, ClockOffset: TimeSpan.Zero);
+    }
+
     /// <summary>
     /// 見本のダイアログを出す。閉じるまで待つ。ファイル・転送・設定のダイアログは、その画面と <paramref name="main"/> があるときだけ出す。
     /// </summary>
@@ -116,7 +163,8 @@ public static class DemoDialogs
         IFileDialogs? fileDialogs = null,
         ITransferDialogs? transferDialogs = null,
         ISettingsDialogs? settingsDialogs = null,
-        MainViewModel? main = null)
+        MainViewModel? main = null,
+        ISyncDialogs? syncDialogs = null)
     {
         ArgumentNullException.ThrowIfNull(prompts);
         ArgumentNullException.ThrowIfNull(dialogs);
@@ -145,6 +193,15 @@ public static class DemoDialogs
                 break;
             case DemoDialog.SettingsExclusions when settingsDialogs is not null && main is not null:
                 await settingsDialogs.ShowSettingsAsync(new SettingsViewModel(main, DataDirectory) { OpensAtExclusions = true }).ConfigureAwait(true);
+                break;
+            case DemoDialog.Sync when syncDialogs is not null:
+                await syncDialogs.ReviewSyncAsync(CreateSync()).ConfigureAwait(true);
+                break;
+            case DemoDialog.SyncDelete when syncDialogs is not null:
+                var sync = CreateSync();
+                sync.IncludeTargetNewer = true;
+                sync.DeleteOnlyOnTarget = true;
+                await syncDialogs.ReviewSyncAsync(sync).ConfigureAwait(true);
                 break;
             case DemoDialog.NewConnection:
                 await dialogs.EditAsync(null, hasSavedPassword: false).ConfigureAwait(true);

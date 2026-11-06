@@ -49,7 +49,9 @@ jobs:
         run: bash tests/servers/start.sh
 
       - name: ビルド
-        run: dotnet build tests/Hakobune.Core.Tests/Hakobune.Core.Tests.csproj -c Release
+        run: |
+          dotnet build tests/Hakobune.Core.Tests/Hakobune.Core.Tests.csproj -c Release
+          dotnet build tests/Hakobune.Presentation.Tests/Hakobune.Presentation.Tests.csproj -c Release
 
       - name: テスト
         env:
@@ -59,6 +61,17 @@ jobs:
           HAKOBUNE_TEST_PROFTPD: ftp://hakobune:hakobune-pass@127.0.0.1:2123
           HAKOBUNE_TEST_SFTP: sftp://hakobune:hakobune-pass@127.0.0.1:2222
         run: dotnet run --project tests/Hakobune.Core.Tests/Hakobune.Core.Tests.csproj -c Release --no-build
+
+      # 同期の比べ方（送った直後は何も送らない、変えたものだけ送る）を、本物のサーバーで確かめる
+      - name: 同期のテスト
+        env:
+          HAKOBUNE_TEST_VSFTPD: ftp://hakobune:hakobune-pass@127.0.0.1:2121
+          HAKOBUNE_TEST_PUREFTPD: ftp://hakobune:hakobune-pass@127.0.0.1:2122
+          HAKOBUNE_TEST_PROFTPD: ftp://hakobune:hakobune-pass@127.0.0.1:2123
+          HAKOBUNE_TEST_SFTP: sftp://hakobune:hakobune-pass@127.0.0.1:2222
+        run: >-
+          dotnet run --project tests/Hakobune.Presentation.Tests/Hakobune.Presentation.Tests.csproj -c Release --no-build
+          -- -class Hakobune.Presentation.Tests.Integration.SyncIntegrationTests
 
       - name: サーバーのログ
         if: failure()
@@ -250,7 +263,9 @@ jobs:
             @{ Name = 'dialog-stop-dark'; Args = '--dialog stop --theme dark' },
             @{ Name = 'dialog-settings'; Args = '--dialog settings --theme light' },
             @{ Name = 'dialog-settings-dark'; Args = '--dialog settings --theme dark' },
-            @{ Name = 'dialog-settings-exclusions'; Args = '--dialog settings-exclusions --theme light --size 1280x900' }
+            @{ Name = 'dialog-settings-exclusions'; Args = '--dialog settings-exclusions --theme light --size 1280x900' },
+            @{ Name = 'dialog-sync'; Args = '--dialog sync --theme light --size 1280x1000' },
+            @{ Name = 'dialog-sync-dark'; Args = '--dialog sync-delete --theme dark --size 1280x1000' }
           )
           $failed = $false
           foreach ($shot in $shots) {

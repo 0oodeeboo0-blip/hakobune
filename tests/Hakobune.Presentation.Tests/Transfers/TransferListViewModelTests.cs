@@ -115,6 +115,24 @@ public class TransferListViewModelTests
     }
 
     [Fact]
+    public void Deleting_on_the_server_reads_as_a_delete()
+    {
+        var (list, source, _) = Create();
+        var item = source.Add("old.html", TransferState.Running, total: 0, isDelete: true);
+
+        var row = Assert.Single(list.Rows);
+        Assert.True(row.IsDelete);
+        Assert.False(row.IsUpload);
+        Assert.False(row.IsDownload);
+        Assert.Equal("削除", row.DirectionLabel);
+        Assert.Equal("サーバーから消す（/var/www/html）", row.Destination);
+        Assert.Equal("消しています", row.Detail);
+
+        source.Update(item with { State = TransferState.Completed, FinishedAt = Noon });
+        Assert.StartsWith("サーバーから消しました", Assert.Single(list.Rows).Detail, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Speed_and_remaining_time_come_from_recent_progress()
     {
         var (list, source, time) = Create();

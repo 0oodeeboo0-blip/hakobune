@@ -115,7 +115,8 @@ public sealed class TransferScheduler : ITransferSink
                 item.Note,
                 item.SizeVerified,
                 item.FinishedAt,
-                item.Request.IsFolder)).ToList();
+                item.Request.IsFolder,
+                item.Request.IsDelete)).ToList();
         }
     }
 
@@ -133,7 +134,8 @@ public sealed class TransferScheduler : ITransferSink
 
             foreach (var entry in saved)
             {
-                var request = new TransferRequest(entry.Direction, entry.LocalPath, entry.RemotePath, entry.OnConflict, IsFolder: entry.IsFolder);
+                var request = new TransferRequest(
+                    entry.Direction, entry.LocalPath, entry.RemotePath, entry.OnConflict, IsFolder: entry.IsFolder, IsDelete: entry.IsDelete);
                 var item = new TransferItem(_nextSequence++, request)
                 {
                     Id = entry.Id,
@@ -816,5 +818,16 @@ public sealed class TransferScheduler : ITransferSink
             return;
         await session.CreateDirectoryAsync(directory, cancellationToken).ConfigureAwait(false);
         _createdDirectories.TryAdd(directory, 0);
+    }
+
+    // 消したフォルダ（とその中）は、作ってあるとは限らなくなるので忘れる
+    void ITransferSink.ForgetRemoteDirectory(string path)
+    {
+        var prefix = path.TrimEnd('/') + "/";
+        foreach (var directory in _createdDirectories.Keys)
+        {
+            if (directory == path || directory.StartsWith(prefix, StringComparison.Ordinal))
+                _createdDirectories.TryRemove(directory, out _);
+        }
     }
 }

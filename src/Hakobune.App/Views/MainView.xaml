@@ -180,6 +180,33 @@
                         <TextBlock Text="ダウンロード" />
                     </StackPanel>
                 </Button>
+                <Button
+                    IsEnabled="{x:Bind ViewModel.CanSync, Mode=OneWay}"
+                    Style="{StaticResource ToolbarButtonStyle}"
+                    ToolTipService.ToolTip="左右のいまのフォルダを比べて、変わったファイルだけ送る・受け取る">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <FontIcon
+                            FontSize="16"
+                            Foreground="{ThemeResource HakobuneAccentTextBrush}"
+                            Glyph="&#xE895;" />
+                        <TextBlock Text="同期" />
+                        <FontIcon FontSize="10" Glyph="&#xE70D;" />
+                    </StackPanel>
+                    <Button.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedLeft">
+                            <MenuFlyoutItem Command="{x:Bind ViewModel.SyncUploadCommand}" Text="変わったファイルだけ送る（パソコン → サーバー）…">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE898;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Command="{x:Bind ViewModel.SyncDownloadCommand}" Text="変わったファイルだけ受け取る（サーバー → パソコン）…">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE896;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                        </MenuFlyout>
+                    </Button.Flyout>
+                </Button>
                 <Rectangle Style="{StaticResource ToolbarSeparatorStyle}" />
                 <Button
                     Command="{x:Bind ViewModel.NewFolderCommand}"

@@ -17,9 +17,11 @@ public sealed class TransferRowViewModel : ObservableObject
         Id = snapshot.Id;
         Direction = snapshot.Direction;
         Name = TransferPaths.GetFileName(snapshot.RemotePath);
-        Destination = "→ " + (snapshot.Direction == TransferDirection.Upload
-            ? TransferPaths.GetRemoteParent(snapshot.RemotePath)
-            : TransferPaths.GetLocalParent(snapshot.LocalPath));
+        Destination = snapshot.IsDelete
+            ? "サーバーから消す（" + TransferPaths.GetRemoteParent(snapshot.RemotePath) + "）"
+            : "→ " + (snapshot.Direction == TransferDirection.Upload
+                ? TransferPaths.GetRemoteParent(snapshot.RemotePath)
+                : TransferPaths.GetLocalParent(snapshot.LocalPath));
         Snapshot = snapshot;
         _rate = new RateMeter(timeProvider);
     }
@@ -30,14 +32,17 @@ public sealed class TransferRowViewModel : ObservableObject
     /// <summary>向き。</summary>
     public TransferDirection Direction { get; }
 
-    /// <summary>アップロードか。</summary>
-    public bool IsUpload => Direction == TransferDirection.Upload;
+    /// <summary>アップロードか（サーバーから消す依頼は除く）。</summary>
+    public bool IsUpload => Direction == TransferDirection.Upload && !IsDelete;
 
     /// <summary>ダウンロードか。</summary>
     public bool IsDownload => Direction == TransferDirection.Download;
 
+    /// <summary>サーバーのファイルかフォルダを消す依頼か（同期で「サーバーからも消す」を選んだとき）。</summary>
+    public bool IsDelete => Snapshot.IsDelete;
+
     /// <summary>向きの名前（読み上げ用）。</summary>
-    public string DirectionLabel => IsUpload ? "アップロード" : "ダウンロード";
+    public string DirectionLabel => IsDelete ? "削除" : IsUpload ? "アップロード" : "ダウンロード";
 
     /// <summary>ファイル名（空のフォルダを作る依頼なら、フォルダの名前）。</summary>
     public string Name { get; }
@@ -162,6 +167,7 @@ public sealed class TransferRowViewModel : ObservableObject
         StateLabel = DisplayText.StateLabel(state);
         Detail = state switch
         {
+            TransferState.Running when snapshot.IsDelete => "消しています",
             TransferState.Running => RunningDetail(snapshot),
             TransferState.WaitingToRetry => RetryDetail(snapshot, now, maxAttempts),
             TransferState.Queued => queuePosition > 0 ? $"{queuePosition.ToString(CultureInfo.InvariantCulture)}番目" : "",
@@ -188,8 +194,15 @@ public sealed class TransferRowViewModel : ObservableObject
         }
         if (snapshot.FailedAttempts > 1)
             lines.Add($"{snapshot.FailedAttempts.ToString(CultureInfo.InvariantCulture)}回試しました");
-        lines.Add((IsUpload ? "送るファイル: " : "受け取る先: ") + snapshot.LocalPath);
-        lines.Add((IsUpload ? "送り先: " : "サーバーのファイル: ") + snapshot.RemotePath);
+        if (IsDelete)
+        {
+            lines.Add("消すもの: " + snapshot.RemotePath);
+        }
+        else
+        {
+            lines.Add((IsUpload ? "送るファイル: " : "受け取る先: ") + snapshot.LocalPath);
+            lines.Add((IsUpload ? "送り先: " : "サーバーのファイル: ") + snapshot.RemotePath);
+        }
         return string.Join(Environment.NewLine, lines);
     }
 
@@ -219,6 +232,8 @@ public sealed class TransferRowViewModel : ObservableObject
     private static string CompletedDetail(TransferItemSnapshot snapshot, TimeZoneInfo timeZone)
     {
         var parts = new List<string>(3);
+        if (snapshot.IsDelete)
+            parts.Add("サーバーから消しました");
         if (snapshot.IsFolder)
             parts.Add("フォルダを作成");
         if (snapshot.SizeVerified)

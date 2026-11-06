@@ -16,6 +16,11 @@
     <ProjectReference Include="..\..\src\Hakobune.Presentation\Hakobune.Presentation.csproj" />
   </ItemGroup>
 
+  <!-- 実サーバーでのテストの接続先は、エンジンのテストと同じものを使う -->
+  <ItemGroup>
+    <Compile Include="..\Hakobune.Core.Tests\Integration\TestServers.cs" Link="Integration\TestServers.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <Using Include="Xunit" />
   </ItemGroup>
