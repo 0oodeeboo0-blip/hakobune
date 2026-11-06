@@ -44,8 +44,38 @@ jobs:
         run: dotnet publish src/Hakobune.App/Hakobune.App.csproj -c Release -r win-x64 -p:Platform=x64 -o publish/Hakobune-win-x64
 
       - name: 成果物を保存
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: Hakobune-win-x64
           path: publish/Hakobune-win-x64
           if-no-files-found: error
+
+      # 起動してすぐ落ちないかを確かめ、画面写真を撮る
+      - name: 起動テストと画面写真
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD 'publish\Hakobune-win-x64\Hakobune.exe'
+          $p = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 15
+          if ($p.HasExited) {
+            Write-Error "アプリが起動直後に終了しました (終了コード $($p.ExitCode))"
+            exit 1
+          }
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $g.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
+          New-Item -ItemType Directory -Force screenshots | Out-Null
+          $bmp.Save((Join-Path $PWD 'screenshots\startup.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+          $g.Dispose()
+          $bmp.Dispose()
+          Stop-Process -Id $p.Id -Force
+
+      - name: 画面写真を保存
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: screenshots
+          path: screenshots
+          if-no-files-found: ignore
