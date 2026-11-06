@@ -49,12 +49,12 @@ public sealed partial class FilePaneView : UserControl
     {
         if (ViewModel?.FocusItem is not { } item)
             return;
-        List.SelectedItem = item;
-        List.ScrollIntoView(item);
+        FileList.SelectedItem = item;
+        FileList.ScrollIntoView(item);
     }
 
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e) =>
-        ViewModel?.UpdateSelection(List.SelectedItems.Count);
+        ViewModel?.UpdateSelection(FileList.SelectedItems.Count);
 
     private async void OnListDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
@@ -69,7 +69,7 @@ public sealed partial class FilePaneView : UserControl
 
         switch (e.Key)
         {
-            case VirtualKey.Enter when List.SelectedItem is FileRowViewModel row:
+            case VirtualKey.Enter when FileList.SelectedItem is FileRowViewModel row:
                 e.Handled = true;
                 await viewModel.OpenAsync(row);
                 break;

@@ -24,7 +24,7 @@ public class FilePaneViewModelTests
     {
         var source = SourceWithFiles();
         var pane = new FilePaneViewModel(PaneKind.Remote);
-        await pane.SetSourceAsync(source);
+        await pane.SetSourceAsync(source, cancellationToken: TestContext.Current.CancellationToken);
         return (pane, source);
     }
 
@@ -125,7 +125,7 @@ public class FilePaneViewModelTests
             FakeFileSource.File("/data", "other.txt", 1),
         ];
         var pane = new FilePaneViewModel(PaneKind.Remote);
-        await pane.SetSourceAsync(source);
+        await pane.SetSourceAsync(source, cancellationToken: TestContext.Current.CancellationToken);
 
         pane.FilterText = "ふぁいる";
         Assert.Equal(new[] { "ファイル一覧.txt" }, Names(pane));
@@ -183,7 +183,7 @@ public class FilePaneViewModelTests
         source.Folders["/data"] = [];
         var pane = new FilePaneViewModel(PaneKind.Local);
 
-        await pane.SetSourceAsync(source);
+        await pane.SetSourceAsync(source, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(pane.ShowsEmptyText);
         Assert.Equal("このフォルダは空です", pane.EmptyText);
@@ -197,7 +197,7 @@ public class FilePaneViewModelTests
         source.Fault = _ => TransferFailure.Transient(FailureReason.ConnectionLost);
         var pane = new FilePaneViewModel(PaneKind.Remote);
 
-        await pane.SetSourceAsync(source);
+        await pane.SetSourceAsync(source, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(pane.HasMessage);
         Assert.Equal("一覧を取得できませんでした", pane.MessageTitle);

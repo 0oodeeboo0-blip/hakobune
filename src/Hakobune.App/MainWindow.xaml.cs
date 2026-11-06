@@ -14,7 +14,7 @@ public sealed partial class MainWindow : Window
     private readonly MainViewModel _viewModel;
     private readonly MainView _view;
 
-    public MainWindow(MainViewModel viewModel, AppOptions options)
+    internal MainWindow(MainViewModel viewModel, AppOptions options)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         ArgumentNullException.ThrowIfNull(options);

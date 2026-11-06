@@ -357,7 +357,7 @@
 
         <!--  一覧  -->
         <ListView
-            x:Name="List"
+            x:Name="FileList"
             Grid.Row="4"
             Padding="0,4"
             DoubleTapped="OnListDoubleTapped"
