@@ -9,7 +9,9 @@ namespace Hakobune.App;
 /// </summary>
 /// <remarks>
 /// <list type="bullet">
+/// <item><c>--connect URL</c>: 起動したら URL（例: sftp://user@example.com/var/www）に接続する（クイック接続。保存はしない）。</item>
 /// <item><c>--demo</c>: 見本のデータで画面を出す。<c>--scenario stale</c> で、一覧の更新に失敗した場面にする。</item>
+/// <item><c>--dialog 名前</c>: 見本のダイアログを出す（new、edit、password、hostkey、hostkey-changed、certificate、delete）。</item>
 /// <item><c>--theme light|dark</c>: ライト・ダークを決める（省くと Windows の設定に合わせる）。</item>
 /// <item><c>--screenshot ファイル名</c>: 画面写真を PNG で保存して終わる。</item>
 /// <item><c>--size 幅x高さ</c>: ウインドウの中の大きさ（既定 1280x800）。</item>
@@ -22,6 +24,12 @@ internal sealed record AppOptions
 
     /// <summary>見本の場面。null ならふつうに起動する。</summary>
     public DemoScenario? Demo { get; init; }
+
+    /// <summary>見本のダイアログ。</summary>
+    public DemoDialog? Dialog { get; init; }
+
+    /// <summary>起動したら接続する URL。</summary>
+    public string? ConnectUrl { get; init; }
 
     /// <summary>ライト・ダーク。null なら Windows の設定に合わせる。</summary>
     public ApplicationTheme? Theme { get; init; }
@@ -47,6 +55,28 @@ internal sealed record AppOptions
             {
                 case "--demo":
                     options = options with { Demo = options.Demo ?? DemoScenario.Normal };
+                    break;
+                case "--connect":
+                    options = options with { ConnectUrl = string.IsNullOrWhiteSpace(value) ? null : value };
+                    i++;
+                    break;
+                case "--dialog":
+                    options = options with
+                    {
+                        Demo = options.Demo ?? DemoScenario.Normal,
+                        Dialog = value?.ToLowerInvariant() switch
+                        {
+                            "new" => DemoDialog.NewConnection,
+                            "edit" => DemoDialog.EditConnection,
+                            "password" => DemoDialog.Password,
+                            "hostkey" => DemoDialog.HostKey,
+                            "hostkey-changed" => DemoDialog.ChangedHostKey,
+                            "certificate" => DemoDialog.Certificate,
+                            "delete" => DemoDialog.Delete,
+                            _ => null,
+                        },
+                    };
+                    i++;
                     break;
                 case "--scenario":
                     options = options with

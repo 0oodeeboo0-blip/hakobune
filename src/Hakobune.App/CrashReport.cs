@@ -5,6 +5,12 @@ internal static class CrashReport
 {
     public static void Write(Exception exception)
     {
+        ArgumentNullException.ThrowIfNull(exception);
+        WriteMessage(exception.ToString());
+    }
+
+    public static void WriteMessage(string message)
+    {
         try
         {
             var path = App.Options.ScreenshotPath is { } screenshot
@@ -13,7 +19,7 @@ internal static class CrashReport
             var directory = Path.GetDirectoryName(Path.GetFullPath(path));
             if (!string.IsNullOrEmpty(directory))
                 Directory.CreateDirectory(directory);
-            File.AppendAllText(path, $"{DateTimeOffset.Now:O}{Environment.NewLine}{exception}{Environment.NewLine}{Environment.NewLine}");
+            File.AppendAllText(path, $"{DateTimeOffset.Now:O}{Environment.NewLine}{message}{Environment.NewLine}{Environment.NewLine}");
         }
         catch (Exception)
         {

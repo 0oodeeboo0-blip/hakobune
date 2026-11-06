@@ -163,7 +163,7 @@ jobs:
           $bmp.Dispose()
           Stop-Process -Id $p.Id -Force
 
-      # 見本のデータで画面を出し、アプリ自身に画面写真を撮らせる（ライト・ダーク・一覧の更新に失敗した場面）
+      # 見本のデータで画面を出し、アプリ自身に画面写真を撮らせる（ライト・ダーク・一覧の更新に失敗した場面・ダイアログ）
       - name: 見本の画面写真
         shell: pwsh
         run: |
@@ -172,7 +172,13 @@ jobs:
           $shots = @(
             @{ Name = 'main-light'; Args = '--demo --theme light' },
             @{ Name = 'main-dark-stale'; Args = '--demo --scenario stale --theme dark' },
-            @{ Name = 'main-light-stale'; Args = '--demo --scenario stale --theme light' }
+            @{ Name = 'main-light-stale'; Args = '--demo --scenario stale --theme light' },
+            @{ Name = 'dialog-new-connection'; Args = '--dialog new --theme light' },
+            @{ Name = 'dialog-edit-dark'; Args = '--dialog edit --theme dark' },
+            @{ Name = 'dialog-password'; Args = '--dialog password --theme light' },
+            @{ Name = 'dialog-hostkey'; Args = '--dialog hostkey --theme light' },
+            @{ Name = 'dialog-hostkey-changed'; Args = '--dialog hostkey-changed --theme dark' },
+            @{ Name = 'dialog-certificate'; Args = '--dialog certificate --theme light' }
           )
           $failed = $false
           foreach ($shot in $shots) {
@@ -199,6 +205,78 @@ jobs:
           if ($failed) {
             Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Level = 2 } -MaxEvents 10 -ErrorAction SilentlyContinue |
               ForEach-Object { Write-Host "---- $($_.TimeCreated) $($_.ProviderName)"; Write-Host $_.Message }
+            exit 1
+          }
+
+      # 本物の FTP サーバー（pyftpdlib）にクイック接続し、サーバーのファイルが並んだ画面を撮る。日本語のファイル名も確かめる。
+      - name: 接続した画面の写真
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check --quiet pyftpdlib
+          $root = Join-Path $env:RUNNER_TEMP 'ftp-root'
+          New-Item -ItemType Directory -Force $root | Out-Null
+          foreach ($dir in @('css', 'images', '商品写真', 'お知らせ')) {
+            New-Item -ItemType Directory -Force (Join-Path $root $dir) | Out-Null
+          }
+          $files = [ordered]@{
+            'index.html' = 18300; 'about.html' = 9100; 'お問い合わせ.html' = 12100; 'robots.txt' = 120
+            'logo.png' = 46800; '見積書_2026年11月.pdf' = 245760; 'backup.zip' = 134637158
+          }
+          foreach ($name in $files.Keys) {
+            $stream = [System.IO.File]::Create((Join-Path $root $name))
+            $stream.SetLength($files[$name])
+            $stream.Dispose()
+          }
+
+          $out = Join-Path $env:RUNNER_TEMP 'ftp-out.log'
+          $log = Join-Path $env:RUNNER_TEMP 'ftp.log'
+          $server = Start-Process -FilePath python -NoNewWindow -PassThru -RedirectStandardOutput $out -RedirectStandardError $log `
+            -ArgumentList @('-m', 'pyftpdlib', '-i', '127.0.0.1', '-p', '2121', '-u', 'hakobune', '-P', 'hakobune-pass', '-d', $root, '-w')
+          $ready = $false
+          for ($i = 0; $i -lt 40 -and -not $ready; $i++) {
+            try {
+              $client = [System.Net.Sockets.TcpClient]::new('127.0.0.1', 2121)
+              $client.Dispose()
+              $ready = $true
+            } catch {
+              Start-Sleep -Milliseconds 500
+            }
+          }
+          if (-not $ready) {
+            Get-Content $log, $out -ErrorAction SilentlyContinue
+            Write-Error 'FTP サーバーが起動しませんでした'
+            exit 1
+          }
+
+          $exe = Join-Path $PWD 'publish\Hakobune-win-x64\Hakobune.exe'
+          New-Item -ItemType Directory -Force screenshots | Out-Null
+          $png = Join-Path $PWD 'screenshots\connected.png'
+          $p = Start-Process -FilePath $exe -ArgumentList "--connect ftp://hakobune:hakobune-pass@127.0.0.1:2121/ --theme light --screenshot `"$png`"" -PassThru
+          $null = $p.Handle
+          $finished = $p.WaitForExit(180000)
+          if (-not $finished) {
+            Stop-Process -Id $p.Id -Force
+          }
+          Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue
+          Write-Host '---- FTP サーバーのログ'
+          Get-Content $log -Tail 60 -ErrorAction SilentlyContinue
+          $failed = $false
+          if (-not $finished) {
+            Write-Host '::error::接続した画面: 時間内に終わりませんでした'
+            $failed = $true
+          }
+          if (Test-Path "$png.error.txt") {
+            Write-Host '::error::接続した画面: アプリがエラーを記録しました'
+            Get-Content "$png.error.txt"
+            $failed = $true
+          }
+          if (Test-Path $png) {
+            Write-Host "接続した画面: $((Get-Item $png).Length) バイト (終了コード $($p.ExitCode))"
+          } else {
+            Write-Host "::error::接続した画面: 画面写真がありません (終了コード $($p.ExitCode))"
+            $failed = $true
+          }
+          if ($failed) {
             exit 1
           }
 

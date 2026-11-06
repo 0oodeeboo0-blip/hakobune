@@ -1,3 +1,4 @@
+using Hakobune.Core.Connections;
 using Hakobune.Core.Transfers;
 using Hakobune.Presentation.Connections;
 using Hakobune.Presentation.Files;
@@ -63,7 +64,7 @@ public static class DemoData
         [
             shop,
             new ConnectionItemViewModel("ショップ（検証）", ConnectionProtocol.Sftp, "staging.example.com"),
-            new ConnectionItemViewModel("社内ポータル", ConnectionProtocol.Ftps, "portal.example.com"),
+            new ConnectionItemViewModel("社内ポータル", ConnectionProtocol.FtpsExplicit, "portal.example.com"),
         ]));
         connections.Add(new ConnectionGroupViewModel("個人",
         [

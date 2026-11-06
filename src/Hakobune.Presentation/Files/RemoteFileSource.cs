@@ -21,12 +21,14 @@ public sealed class RemoteFileSource : IFileSource
     }
 
     /// <inheritdoc />
-    public Task<string> GetStartPathAsync(CancellationToken cancellationToken) => _browser.GetHomeDirectoryAsync(cancellationToken);
+    public Task<string> GetStartPathAsync(CancellationToken cancellationToken) =>
+        Task.Run(() => _browser.GetHomeDirectoryAsync(cancellationToken), cancellationToken);
 
     /// <inheritdoc />
     public async Task<FileListing> ListAsync(string path, CancellationToken cancellationToken)
     {
-        var result = await _browser.ListAsync(path, cancellationToken).ConfigureAwait(false);
+        // つなぎ直すときに鍵や証明書を利用者に聞くことがあるので、画面のスレッドでは動かさない
+        var result = await Task.Run(() => _browser.ListAsync(path, cancellationToken), cancellationToken).ConfigureAwait(false);
         IReadOnlyList<FileEntry> entries = result.Succeeded ? result.Items.Select(FileEntry.FromRemote).ToList() : [];
         return new FileListing(result.Path, entries, result.Failure, result.RetrievedAt);
     }

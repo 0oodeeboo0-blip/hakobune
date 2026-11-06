@@ -13,12 +13,15 @@ public sealed partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
     private readonly MainView _view;
+    private readonly AppOptions _options;
+    private readonly TaskCompletionSource _loaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     internal MainWindow(MainViewModel viewModel, AppOptions options)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         ArgumentNullException.ThrowIfNull(options);
         _viewModel = viewModel;
+        _options = options;
 
         InitializeComponent();
         Title = "Hakobune";
@@ -38,10 +41,36 @@ public sealed partial class MainWindow : Window
 
         PlaceWindow(options.Width, options.Height, center: options.ScreenshotPath is null);
 
-        if (options.ScreenshotPath is { } path)
-            _view.Loaded += async (_, _) => await CaptureAndExitAsync(path, options.Width, options.Height);
-
+        _view.Loaded += (_, _) => _loaded.TrySetResult();
         Closed += (_, _) => _viewModel.Dispose();
+    }
+
+    /// <summary>画面ができあがった（ダイアログを出せるようになった）。</summary>
+    internal Task WhenLoaded => _loaded.Task;
+
+    /// <summary>
+    /// 画面写真を撮って終わる。<paramref name="fromScreen"/> なら、ダイアログも写るように画面から撮る。
+    /// </summary>
+    internal async Task CaptureAndExitAsync(string path, bool fromScreen)
+    {
+        try
+        {
+            // タイトルバーまで広げた分、中身は指定より大きくなるので、測って合わせる
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
+            FitContent(_options.Width, _options.Height);
+            // 一覧の行やフォントが描き終わるのを待つ
+            await Task.Delay(TimeSpan.FromSeconds(3));
+            if (fromScreen)
+                await Screenshot.SaveWindowAsync(WinRT.Interop.WindowNative.GetWindowHandle(this), path);
+            else
+                await Screenshot.SaveAsync(_view, path);
+        }
+        catch (Exception ex)
+        {
+            CrashReport.Write(ex);
+            Environment.Exit(1);
+        }
+        Application.Current.Exit();
     }
 
     private void SetIcon()
@@ -71,25 +100,6 @@ public sealed partial class MainWindow : Window
         var x = center ? area.X + Math.Max(0, (area.Width - outer.Width) / 2) : area.X;
         var y = center ? area.Y + Math.Max(0, (area.Height - outer.Height) / 2) : area.Y;
         AppWindow.Move(new PointInt32(x, y));
-    }
-
-    private async Task CaptureAndExitAsync(string path, int width, int height)
-    {
-        try
-        {
-            // タイトルバーまで広げた分、中身は指定より大きくなるので、測って合わせる
-            await Task.Delay(TimeSpan.FromMilliseconds(500));
-            FitContent(width, height);
-            // 一覧の行やフォントが描き終わるのを待つ
-            await Task.Delay(TimeSpan.FromSeconds(3));
-            await Screenshot.SaveAsync(_view, path);
-        }
-        catch (Exception ex)
-        {
-            CrashReport.Write(ex);
-            Environment.Exit(1);
-        }
-        Application.Current.Exit();
     }
 
     // 中身（MainView）がちょうど width x height（論理ピクセル）になるよう、ウインドウの大きさを直す

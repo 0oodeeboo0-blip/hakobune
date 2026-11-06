@@ -12,6 +12,12 @@ public static class Ui
     /// <summary>選んでいないものは少し薄くする。</summary>
     public static double DimUnless(bool value) => value ? 1.0 : 0.72;
 
+    /// <summary>当てはまらないときだけ見せる。</summary>
+    public static Visibility VisibleUnless(bool value) => value ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>どちらにも当てはまらないときだけ見せる。</summary>
+    public static Visibility VisibleUnlessAny(bool first, bool second) => first || second ? Visibility.Collapsed : Visibility.Visible;
+
     /// <summary>接続先の一覧の開閉ボタンのアイコン。</summary>
     public static string SidebarGlyph(bool isOpen) => isOpen ? "" : "";
 

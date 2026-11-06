@@ -404,5 +404,8 @@ internal static class FtpErrors
 /// <summary>FTP / FTPS の接続を作る。</summary>
 public sealed class FtpSessionFactory(FtpConnectionSettings settings) : IRemoteSessionFactory
 {
-    public IRemoteSession Create() => new FtpRemoteSession(settings);
+    /// <summary>接続先の設定。</summary>
+    public FtpConnectionSettings Settings { get; } = settings ?? throw new ArgumentNullException(nameof(settings));
+
+    public IRemoteSession Create() => new FtpRemoteSession(Settings);
 }

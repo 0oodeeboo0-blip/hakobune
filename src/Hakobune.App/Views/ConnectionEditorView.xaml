@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="Hakobune.App.Views.ConnectionEditorView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Language="ja-JP">
+
+    <!--  接続先の作成・編集（ダイアログの中身）  -->
+    <StackPanel MinWidth="420" Spacing="16">
+        <ComboBox
+            x:Name="ProtocolBox"
+            HorizontalAlignment="Stretch"
+            Header="方式"
+            SelectedIndex="{x:Bind ViewModel.ProtocolIndex, Mode=TwoWay}" />
+
+        <!--  暗号化しない方式を選んだときの注意  -->
+        <Grid
+            Padding="12,10"
+            Background="{ThemeResource HakobuneWarningTagBackgroundBrush}"
+            ColumnSpacing="10"
+            CornerRadius="4"
+            Visibility="{x:Bind ViewModel.ShowsInsecureWarning, Mode=OneWay}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <FontIcon
+                Margin="0,2,0,0"
+                VerticalAlignment="Top"
+                FontSize="14"
+                Foreground="{ThemeResource HakobuneWarningTagTextBrush}"
+                Glyph="&#xE7BA;" />
+            <TextBlock
+                Grid.Column="1"
+                FontSize="12"
+                Foreground="{ThemeResource HakobuneWarningTagTextBrush}"
+                Text="FTP は暗号化しないので、パスワードやファイルの中身を盗み見られるおそれがあります。サーバーが対応していれば、SFTP か FTPS を選んでください。"
+                TextWrapping="Wrap" />
+        </Grid>
+
+        <StackPanel Spacing="6">
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="96" />
+                </Grid.ColumnDefinitions>
+                <TextBox
+                    x:Name="HostBox"
+                    Header="ホスト名"
+                    IsSpellCheckEnabled="False"
+                    PlaceholderText="example.com"
+                    Text="{x:Bind ViewModel.Host, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBox
+                    Grid.Column="1"
+                    Header="ポート"
+                    InputScope="Number"
+                    IsSpellCheckEnabled="False"
+                    PlaceholderText="{x:Bind ViewModel.PortPlaceholder, Mode=OneWay}"
+                    Text="{x:Bind ViewModel.PortText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </Grid>
+            <TextBlock
+                FontSize="12"
+                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                Text="{x:Bind ViewModel.ValidationMessage, Mode=OneWay}"
+                TextWrapping="Wrap"
+                Visibility="{x:Bind ViewModel.ShowsValidationMessage, Mode=OneWay}" />
+            <TextBlock
+                Style="{StaticResource SecondaryCaptionTextStyle}"
+                Text="「sftp://ユーザー名@example.com」のような URL を貼り付けると、ほかの欄も埋まります。"
+                TextWrapping="Wrap" />
+        </StackPanel>
+
+        <TextBox
+            Header="ユーザー名"
+            IsSpellCheckEnabled="False"
+            PlaceholderText="{x:Bind ViewModel.UserNamePlaceholder, Mode=OneWay}"
+            Text="{x:Bind ViewModel.UserName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+        <StackPanel Spacing="4">
+            <PasswordBox
+                x:Name="PasswordInput"
+                Header="パスワード"
+                PlaceholderText="{x:Bind ViewModel.PasswordPlaceholder, Mode=OneWay}" />
+            <CheckBox Content="パスワードを保存する（Windows の資格情報マネージャーに入れます）" IsChecked="{x:Bind ViewModel.SavePassword, Mode=TwoWay}" />
+        </StackPanel>
+
+        <!--  SFTP の秘密鍵  -->
+        <Grid ColumnSpacing="8" Visibility="{x:Bind ViewModel.IsSftp, Mode=OneWay}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox
+                Header="秘密鍵（使うときだけ）"
+                IsSpellCheckEnabled="False"
+                PlaceholderText="例: C:\Users\あなた\.ssh\id_ed25519"
+                Text="{x:Bind ViewModel.PrivateKeyPath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            <Button
+                Grid.Column="1"
+                VerticalAlignment="Bottom"
+                AutomationProperties.Name="秘密鍵のファイルを選ぶ"
+                Click="OnBrowsePrivateKey"
+                Content="参照…" />
+        </Grid>
+
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBox
+                Header="表示名"
+                PlaceholderText="{x:Bind ViewModel.NamePlaceholder, Mode=OneWay}"
+                Text="{x:Bind ViewModel.Name, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            <TextBox
+                Grid.Column="1"
+                Header="まとまり"
+                PlaceholderText="接続先"
+                Text="{x:Bind ViewModel.Group, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+        </Grid>
+
+        <Expander
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Stretch"
+            Header="詳しい設定"
+            IsExpanded="{x:Bind ViewModel.OpensAdvancedSettings}">
+            <StackPanel Spacing="16">
+                <TextBox
+                    Header="サーバーで最初に開くフォルダ"
+                    IsSpellCheckEnabled="False"
+                    PlaceholderText="空欄ならログインしたときのフォルダ"
+                    Text="{x:Bind ViewModel.RemoteDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox
+                        Header="パソコンで最初に開くフォルダ"
+                        IsSpellCheckEnabled="False"
+                        PlaceholderText="空欄なら変えない"
+                        Text="{x:Bind ViewModel.LocalDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <Button
+                        Grid.Column="1"
+                        VerticalAlignment="Bottom"
+                        AutomationProperties.Name="パソコンのフォルダを選ぶ"
+                        Click="OnBrowseLocalFolder"
+                        Content="参照…" />
+                </Grid>
+                <ComboBox
+                    x:Name="EncodingBox"
+                    HorizontalAlignment="Stretch"
+                    Header="ファイル名の文字コード"
+                    SelectedIndex="{x:Bind ViewModel.EncodingIndex, Mode=TwoWay}" />
+                <CheckBox
+                    Content="パッシブモードを使う（ふつうは使います）"
+                    IsChecked="{x:Bind ViewModel.UsePassiveMode, Mode=TwoWay}"
+                    Visibility="{x:Bind ViewModel.IsFtp, Mode=OneWay}" />
+            </StackPanel>
+        </Expander>
+    </StackPanel>
+</UserControl>

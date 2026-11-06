@@ -45,6 +45,8 @@ public sealed class FilePaneViewModel : ObservableObject
     private int _autoRetryCount;
     private string? _failedPath;
     private bool _hasLoaded;
+    private Func<Task>? _externalRetry;
+    private string? _busyText;
 
     /// <summary>一覧を作る。<paramref name="timeProvider"/> は時刻の表示と自動の取り直しに使う。</summary>
     public FilePaneViewModel(PaneKind kind, TimeProvider? timeProvider = null)
@@ -53,7 +55,7 @@ public sealed class FilePaneViewModel : ObservableObject
         _time = timeProvider ?? TimeProvider.System;
         GoUpCommand = new AsyncRelayCommand(GoUpAsync, () => CanGoUp);
         RefreshCommand = new AsyncRelayCommand(RefreshAsync, () => HasSource);
-        RetryCommand = new AsyncRelayCommand(RetryAsync, () => HasSource);
+        RetryCommand = new AsyncRelayCommand(RetryAsync, () => HasSource || _externalRetry is not null);
         OpenCommand = new AsyncRelayCommand<FileRowViewModel>(OpenAsync);
         NavigateToSegmentCommand = new AsyncRelayCommand<PathSegment>(segment => segment is null ? Task.CompletedTask : NavigateAsync(segment.Path));
     }
@@ -227,16 +229,18 @@ public sealed class FilePaneViewModel : ObservableObject
     }
 
     /// <summary>行がないときの案内を出すか（最初の読み込み中は出さない）。</summary>
-    public bool ShowsEmptyText => Items.Count == 0 && !(IsLoading && !_hasLoaded);
+    public bool ShowsEmptyText => Items.Count == 0 && (_busyText is not null || !(IsLoading && !_hasLoaded));
 
-    /// <summary>最初の読み込み中か（くるくる回る印を出す）。</summary>
-    public bool ShowsProgress => IsLoading && !_hasLoaded;
+    /// <summary>最初の読み込み中か、接続しているところか（くるくる回る印を出す）。</summary>
+    public bool ShowsProgress => _busyText is not null || (IsLoading && !_hasLoaded);
 
     /// <summary>行がないときの案内。</summary>
     public string EmptyText
     {
         get
         {
+            if (_busyText is not null)
+                return _busyText;
             if (!HasSource)
                 return Kind == PaneKind.Remote ? "接続していません" : "フォルダを開いていません";
             if (!_hasLoaded)
@@ -248,7 +252,7 @@ public sealed class FilePaneViewModel : ObservableObject
     }
 
     /// <summary>行がないときの補足。</summary>
-    public string EmptyHint => !HasSource && Kind == PaneKind.Remote ? "左の接続先を選ぶと、ここにサーバーのファイルが出ます" : "";
+    public string EmptyHint => !HasSource && _busyText is null && Kind == PaneKind.Remote ? "左の接続先を選ぶと、ここにサーバーのファイルが出ます" : "";
 
     /// <summary>上のフォルダへ行けるか。</summary>
     public bool CanGoUp => _hasLoaded && _source?.GetParent(CurrentPath) is not null;
@@ -330,6 +334,25 @@ public sealed class FilePaneViewModel : ObservableObject
     public Task OpenAsync(FileRowViewModel? row) =>
         row is { IsDirectory: true } ? LoadAsync(row.Entry.FullPath, focusName: null) : Task.CompletedTask;
 
+    /// <summary>
+    /// 一覧の外で起きたこと（接続できなかったなど）を知らせる。<paramref name="retry"/> を渡すと「今すぐ再試行」で呼ぶ。
+    /// </summary>
+    public void ShowNotice(string title, string reason, string text = "", Func<Task>? retry = null)
+    {
+        ArgumentNullException.ThrowIfNull(title);
+        ArgumentNullException.ThrowIfNull(reason);
+        ShowMessage(title, reason, text ?? "");
+        _externalRetry = retry;
+        RetryCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>「接続しています…」のように、一覧の代わりに出す文字を決める。null で戻す。</summary>
+    public void SetBusy(string? text)
+    {
+        _busyText = text;
+        OnViewStateChanged();
+    }
+
     /// <summary>画面でこちら側に触れたことを知らせる。</summary>
     public void Activate() => ActivationRequested?.Invoke(this, EventArgs.Empty);
 
@@ -372,6 +395,11 @@ public sealed class FilePaneViewModel : ObservableObject
 
     private Task RetryAsync()
     {
+        if (_externalRetry is { } retry)
+        {
+            HideMessage();
+            return retry();
+        }
         if (!HasSource)
             return Task.CompletedTask;
         if (_failedPath is { } failed)
@@ -504,6 +532,11 @@ public sealed class FilePaneViewModel : ObservableObject
 
     private void HideMessage()
     {
+        if (_externalRetry is not null)
+        {
+            _externalRetry = null;
+            RetryCommand.NotifyCanExecuteChanged();
+        }
         HasMessage = false;
         MessageTitle = "";
         MessageReason = "";

@@ -100,6 +100,14 @@
                         VerticalAlignment="Center"
                         Fill="{ThemeResource DividerStrokeColorDefaultBrush}"
                         Visibility="{x:Bind ViewModel.Connection.IsConnected, Mode=OneWay}" />
+                    <ProgressRing
+                        Width="14"
+                        Height="14"
+                        MinWidth="0"
+                        MinHeight="0"
+                        VerticalAlignment="Center"
+                        IsActive="{x:Bind ViewModel.IsConnecting, Mode=OneWay}"
+                        Visibility="{x:Bind ViewModel.IsConnecting, Mode=OneWay}" />
                     <TextBlock
                         VerticalAlignment="Center"
                         FontSize="12"
@@ -200,6 +208,20 @@
                     Style="{StaticResource SubtleIconButtonStyle}"
                     ToolTipService.ToolTip="その他の操作">
                     <FontIcon FontSize="16" Glyph="&#xE712;" />
+                    <Button.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedRight">
+                            <MenuFlyoutItem Command="{x:Bind ViewModel.NewConnectionCommand}" Text="新しい接続…">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE710;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutItem Command="{x:Bind ViewModel.DisconnectCommand}" Text="切断">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE8CD;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                        </MenuFlyout>
+                    </Button.Flyout>
                 </Button>
             </StackPanel>
         </Grid>
@@ -233,6 +255,7 @@
                         Height="32"
                         HorizontalAlignment="Right"
                         AutomationProperties.Name="新しい接続"
+                        Command="{x:Bind ViewModel.NewConnectionCommand}"
                         Style="{StaticResource SubtleIconButtonStyle}"
                         ToolTipService.ToolTip="新しい接続">
                         <FontIcon FontSize="14" Glyph="&#xE710;" />
@@ -285,7 +308,86 @@
                                                     <Button
                                                         AutomationProperties.Name="{x:Bind AccessibleName, Mode=OneWay}"
                                                         Click="OnConnectionClick"
-                                                        Style="{StaticResource SidebarItemButtonStyle}">
+                                                        Style="{StaticResource SidebarItemButtonStyle}"
+                                                        ToolTipService.ToolTip="{x:Bind Subtitle, Mode=OneWay}">
+                                                        <Button.ContextFlyout>
+                                                            <MenuFlyout>
+                                                                <MenuFlyoutItem
+                                                                    Click="OnConnectMenuClick"
+                                                                    Tag="{x:Bind}"
+                                                                    Text="接続"
+                                                                    Visibility="{x:Bind helpers:Ui.VisibleUnlessAny(IsConnected, IsConnecting), Mode=OneWay}">
+                                                                    <MenuFlyoutItem.Icon>
+                                                                        <FontIcon Glyph="&#xE703;" />
+                                                                    </MenuFlyoutItem.Icon>
+                                                                </MenuFlyoutItem>
+                                                                <MenuFlyoutItem
+                                                                    Click="OnDisconnectMenuClick"
+                                                                    Tag="{x:Bind}"
+                                                                    Text="切断"
+                                                                    Visibility="{x:Bind IsConnected, Mode=OneWay}">
+                                                                    <MenuFlyoutItem.Icon>
+                                                                        <FontIcon Glyph="&#xE8CD;" />
+                                                                    </MenuFlyoutItem.Icon>
+                                                                </MenuFlyoutItem>
+                                                                <MenuFlyoutItem
+                                                                    Click="OnDisconnectMenuClick"
+                                                                    Tag="{x:Bind}"
+                                                                    Text="接続をやめる"
+                                                                    Visibility="{x:Bind IsConnecting, Mode=OneWay}">
+                                                                    <MenuFlyoutItem.Icon>
+                                                                        <FontIcon Glyph="&#xE711;" />
+                                                                    </MenuFlyoutItem.Icon>
+                                                                </MenuFlyoutItem>
+                                                                <MenuFlyoutSeparator />
+                                                                <MenuFlyoutItem
+                                                                    Click="OnEditMenuClick"
+                                                                    Tag="{x:Bind}"
+                                                                    Text="編集…"
+                                                                    Visibility="{x:Bind helpers:Ui.VisibleUnless(IsTemporary), Mode=OneWay}">
+                                                                    <MenuFlyoutItem.Icon>
+                                                                        <FontIcon Glyph="&#xE70F;" />
+                                                                    </MenuFlyoutItem.Icon>
+                                                                </MenuFlyoutItem>
+                                                                <MenuFlyoutItem
+                                                                    Click="OnEditMenuClick"
+                                                                    Tag="{x:Bind}"
+                                                                    Text="接続先として保存…"
+                                                                    Visibility="{x:Bind IsTemporary, Mode=OneWay}">
+                                                                    <MenuFlyoutItem.Icon>
+                                                                        <FontIcon Glyph="&#xE74E;" />
+                                                                    </MenuFlyoutItem.Icon>
+                                                                </MenuFlyoutItem>
+                                                                <MenuFlyoutItem
+                                                                    Click="OnDuplicateMenuClick"
+                                                                    Tag="{x:Bind}"
+                                                                    Text="複製"
+                                                                    Visibility="{x:Bind helpers:Ui.VisibleUnless(IsTemporary), Mode=OneWay}">
+                                                                    <MenuFlyoutItem.Icon>
+                                                                        <FontIcon Glyph="&#xE8C8;" />
+                                                                    </MenuFlyoutItem.Icon>
+                                                                </MenuFlyoutItem>
+                                                                <MenuFlyoutSeparator />
+                                                                <MenuFlyoutItem
+                                                                    Click="OnDeleteMenuClick"
+                                                                    Tag="{x:Bind}"
+                                                                    Text="削除…"
+                                                                    Visibility="{x:Bind helpers:Ui.VisibleUnless(IsTemporary), Mode=OneWay}">
+                                                                    <MenuFlyoutItem.Icon>
+                                                                        <FontIcon Glyph="&#xE74D;" />
+                                                                    </MenuFlyoutItem.Icon>
+                                                                </MenuFlyoutItem>
+                                                                <MenuFlyoutItem
+                                                                    Click="OnDeleteMenuClick"
+                                                                    Tag="{x:Bind}"
+                                                                    Text="一覧から外す"
+                                                                    Visibility="{x:Bind IsTemporary, Mode=OneWay}">
+                                                                    <MenuFlyoutItem.Icon>
+                                                                        <FontIcon Glyph="&#xE738;" />
+                                                                    </MenuFlyoutItem.Icon>
+                                                                </MenuFlyoutItem>
+                                                            </MenuFlyout>
+                                                        </Button.ContextFlyout>
                                                         <Grid ColumnSpacing="10">
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="Auto" />
@@ -365,36 +467,49 @@
                                                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
                                                                 <TextBlock
                                                                     FontWeight="{x:Bind helpers:Ui.SemiBoldIf(IsSelected), Mode=OneWay}"
-                                                                    Text="{x:Bind Name}"
+                                                                    Text="{x:Bind Name, Mode=OneWay}"
                                                                     TextTrimming="CharacterEllipsis" />
                                                                 <TextBlock
                                                                     FontSize="12"
                                                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                                    Text="{x:Bind Subtitle}"
+                                                                    Text="{x:Bind Subtitle, Mode=OneWay}"
                                                                     TextTrimming="CharacterEllipsis" />
                                                             </StackPanel>
-                                                            <Ellipse
+                                                            <!--  暗号化なしの印と、接続中の印  -->
+                                                            <StackPanel
                                                                 Grid.Column="2"
-                                                                Width="8"
-                                                                Height="8"
                                                                 VerticalAlignment="Center"
-                                                                Fill="{ThemeResource HakobuneAccentTextBrush}"
-                                                                Visibility="{x:Bind IsConnected, Mode=OneWay}" />
-                                                            <Border
-                                                                Grid.Column="2"
-                                                                Height="20"
-                                                                Padding="6,0"
-                                                                VerticalAlignment="Center"
-                                                                Background="{ThemeResource HakobuneWarningTagBackgroundBrush}"
-                                                                CornerRadius="4"
-                                                                Visibility="{x:Bind IsInsecure}">
-                                                                <TextBlock
+                                                                Orientation="Horizontal"
+                                                                Spacing="8">
+                                                                <Border
+                                                                    Height="20"
+                                                                    Padding="6,0"
                                                                     VerticalAlignment="Center"
-                                                                    FontSize="11"
-                                                                    FontWeight="SemiBold"
-                                                                    Foreground="{ThemeResource HakobuneWarningTagTextBrush}"
-                                                                    Text="暗号化なし" />
-                                                            </Border>
+                                                                    Background="{ThemeResource HakobuneWarningTagBackgroundBrush}"
+                                                                    CornerRadius="4"
+                                                                    Visibility="{x:Bind IsInsecure, Mode=OneWay}">
+                                                                    <TextBlock
+                                                                        VerticalAlignment="Center"
+                                                                        FontSize="11"
+                                                                        FontWeight="SemiBold"
+                                                                        Foreground="{ThemeResource HakobuneWarningTagTextBrush}"
+                                                                        Text="暗号化なし" />
+                                                                </Border>
+                                                                <Ellipse
+                                                                    Width="8"
+                                                                    Height="8"
+                                                                    VerticalAlignment="Center"
+                                                                    Fill="{ThemeResource HakobuneAccentTextBrush}"
+                                                                    Visibility="{x:Bind IsConnected, Mode=OneWay}" />
+                                                                <ProgressRing
+                                                                    Width="16"
+                                                                    Height="16"
+                                                                    MinWidth="0"
+                                                                    MinHeight="0"
+                                                                    VerticalAlignment="Center"
+                                                                    IsActive="{x:Bind IsConnecting, Mode=OneWay}"
+                                                                    Visibility="{x:Bind IsConnecting, Mode=OneWay}" />
+                                                            </StackPanel>
                                                         </Grid>
                                                     </Button>
                                                 </Grid>
@@ -406,6 +521,29 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                 </ScrollViewer>
+
+                <!--  接続先がまだ無いときの案内  -->
+                <StackPanel
+                    Grid.Row="1"
+                    Margin="8,16,8,0"
+                    Spacing="10"
+                    Visibility="{x:Bind ViewModel.Connections.IsEmpty, Mode=OneWay}">
+                    <TextBlock FontWeight="SemiBold" Text="接続先はまだありません" />
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        Text="サーバーのアドレスとログインの情報を登録すると、ここに並びます。クリックすると接続します。"
+                        TextWrapping="Wrap" />
+                    <Button
+                        Margin="0,4,0,0"
+                        Command="{x:Bind ViewModel.NewConnectionCommand}"
+                        Style="{StaticResource AccentButtonStyle}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon FontSize="14" Glyph="&#xE710;" />
+                            <TextBlock Text="新しい接続" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
 
                 <Button
                     Grid.Row="2"

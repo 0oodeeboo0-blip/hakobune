@@ -397,5 +397,8 @@ internal static class SftpErrors
 /// <summary>SFTP の接続を作る。</summary>
 public sealed class SftpSessionFactory(SftpConnectionSettings settings) : IRemoteSessionFactory
 {
-    public IRemoteSession Create() => new SftpRemoteSession(settings);
+    /// <summary>接続先の設定。</summary>
+    public SftpConnectionSettings Settings { get; } = settings ?? throw new ArgumentNullException(nameof(settings));
+
+    public IRemoteSession Create() => new SftpRemoteSession(Settings);
 }
