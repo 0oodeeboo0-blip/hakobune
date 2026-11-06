@@ -1,0 +1,35 @@
+# Build output
+bin/
+obj/
+artifacts/
+publish/
+AppPackages/
+BundleArtifacts/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.idea/
+*.user
+*.suo
+*.userprefs
+*.rsuser
+.vscode/*
+!.vscode/extensions.json
+
+# Test results and coverage
+TestResults/
+*.trx
+coverage*/
+*.coverage
+*.coveragexml
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+.nuget/
+
+# OS files
+Thumbs.db
+Desktop.ini
+.DS_Store
