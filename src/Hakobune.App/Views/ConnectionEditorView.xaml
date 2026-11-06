@@ -13,6 +13,15 @@
             Header="方式"
             SelectedIndex="{x:Bind ViewModel.ProtocolIndex, Mode=TwoWay}" />
 
+        <!--  「自動」の説明  -->
+        <TextBlock
+            Margin="0,-10,0,0"
+            FontSize="12"
+            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+            Text="暗号化（FTPS）を先に試し、使えないサーバーでは暗号化なしの FTP でつなぎます。つながった方式を覚えます。SSH が使えるサーバーなら「SFTP」を選んでください。"
+            TextWrapping="Wrap"
+            Visibility="{x:Bind ViewModel.IsAuto, Mode=OneWay}" />
+
         <!--  暗号化しない方式を選んだときの注意  -->
         <Grid
             Padding="12,10"

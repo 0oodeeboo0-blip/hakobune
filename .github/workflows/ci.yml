@@ -222,7 +222,7 @@ jobs:
             exit 1
           }
 
-      # 見本のデータで画面を出し、アプリ自身に画面写真を撮らせる（ライト・ダーク・一覧の更新に失敗した場面・ダイアログ）
+      # 見本のデータで画面を出し、アプリ自身に画面写真を撮らせる（ライト・ダーク・一覧の更新に失敗した場面・取り直して行が光る場面・ダイアログ）
       - name: 見本の画面写真
         shell: pwsh
         run: |
@@ -233,6 +233,8 @@ jobs:
             @{ Name = 'main-dark-stale'; Args = '--demo --scenario stale --theme dark' },
             @{ Name = 'main-light-stale'; Args = '--demo --scenario stale --theme light' },
             @{ Name = 'main-log-dark'; Args = '--demo --log --theme dark' },
+            @{ Name = 'main-light-refreshed'; Args = '--demo --scenario refreshed --theme light' },
+            @{ Name = 'main-dark-refreshed'; Args = '--demo --scenario refreshed --theme dark' },
             @{ Name = 'dialog-new-connection'; Args = '--dialog new --theme light' },
             @{ Name = 'dialog-edit-dark'; Args = '--dialog edit --theme dark' },
             @{ Name = 'dialog-quick-connect'; Args = '--dialog quick --theme light' },

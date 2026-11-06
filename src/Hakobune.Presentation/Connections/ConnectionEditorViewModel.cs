@@ -32,6 +32,7 @@ public sealed class ConnectionEditorViewModel : ObservableObject
 {
     private static readonly ConnectionProtocol[] Protocols =
     [
+        ConnectionProtocol.Auto,
         ConnectionProtocol.Sftp,
         ConnectionProtocol.FtpsExplicit,
         ConnectionProtocol.FtpsImplicit,
@@ -60,7 +61,8 @@ public sealed class ConnectionEditorViewModel : ObservableObject
         SavePassword = !quickConnect && (IsNew || hasSavedPassword);
         Name = source.Name;
         Group = source.Group;
-        ProtocolIndex = Math.Max(0, Array.IndexOf(Protocols, source.Protocol));
+        // 新しい接続先は「自動」から（FFFTP のように、暗号化できるかどうかを気にしなくてよい）
+        ProtocolIndex = IsNew ? 0 : Math.Max(0, Array.IndexOf(Protocols, source.Protocol));
         Host = source.Host;
         PortText = source.Port > 0 ? source.Port.ToString(CultureInfo.InvariantCulture) : "";
         UserName = source.UserName;
@@ -74,7 +76,7 @@ public sealed class ConnectionEditorViewModel : ObservableObject
 
     /// <summary>方式の選択肢。</summary>
     public static IReadOnlyList<string> ProtocolChoices { get; } =
-        ["SFTP（おすすめ）", "FTPS（明示的・FTPES）", "FTPS（暗黙的）", "FTP（暗号化なし）"];
+        ["自動（FTPS か FTP。おすすめ）", "SFTP（SSH）", "FTPS（明示的・FTPES）", "FTPS（暗黙的・990 番）", "FTP（暗号化なし）"];
 
     /// <summary>ファイル名の文字コードの選択肢。</summary>
     public static IReadOnlyList<string> EncodingChoices { get; } = ["UTF-8（ふつうはこれ）", "Shift_JIS（古いサーバー）", "EUC-JP（古いサーバー）"];
@@ -119,6 +121,7 @@ public sealed class ConnectionEditorViewModel : ObservableObject
             OnPropertyChanged(nameof(IsSftp));
             OnPropertyChanged(nameof(IsFtp));
             OnPropertyChanged(nameof(ShowsInsecureWarning));
+            OnPropertyChanged(nameof(IsAuto));
             OnPropertyChanged(nameof(PortPlaceholder));
             OnPropertyChanged(nameof(UserNamePlaceholder));
             OnValidationChanged();
@@ -136,6 +139,9 @@ public sealed class ConnectionEditorViewModel : ObservableObject
 
     /// <summary>暗号化しない方式を選んだか（注意を出す）。</summary>
     public bool ShowsInsecureWarning => Protocol == ConnectionProtocol.Ftp;
+
+    /// <summary>「自動」を選んだか（どう決まるかの説明を出す）。</summary>
+    public bool IsAuto => Protocol == ConnectionProtocol.Auto;
 
     /// <summary>
     /// ホスト名。「sftp://user@example.com:22/var/www」のような URL を貼り付けると、ほかの欄も埋める。

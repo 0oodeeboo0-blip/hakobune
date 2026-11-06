@@ -360,6 +360,60 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         SaveSettings(window: null);
     }
 
+    // 「自動」で決まった方式を、この接続先に覚える（次からはその方式で直接つなぐ。暗号化できたなら、暗号化なしには戻らない）
+    private async Task RememberProtocolAsync(ConnectionItemViewModel item, ConnectionProtocol protocol)
+    {
+        item.Profile = item.Profile with { Protocol = protocol };
+        Log.Info($"方式は「{ProtocolName(protocol)}」に決まりました。次からもこの方式で接続します", item.Name);
+        if (!item.IsTemporary)
+            await SaveConnectionsAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>方式の選び直しの案。</summary>
+    private sealed record ProtocolSuggestion(ConnectionProtocol Protocol, string Hint, string ButtonText);
+
+    // 方式が違うために接続できなかったらしいときの案（ロリポップ！のように、暗号化しないと入れないサーバーなど）
+    private static ProtocolSuggestion? SuggestProtocol(ConnectionProfile profile, TransferFailure failure)
+    {
+        if (profile.Protocol == ConnectionProtocol.Ftp && failure.Reason == FailureReason.EncryptionRequired)
+        {
+            return new ProtocolSuggestion(
+                ConnectionProtocol.FtpsExplicit,
+                "方式を「FTPS（明示的）」にすると接続できます",
+                "FTPS（明示的）でつなぎ直す");
+        }
+        if (profile.Protocol == ConnectionProtocol.FtpsImplicit
+            && failure.Reason is FailureReason.Timeout or FailureReason.ConnectionLost or FailureReason.SecureConnectionFailed)
+        {
+            return new ProtocolSuggestion(
+                ConnectionProtocol.FtpsExplicit,
+                "FTPS（暗黙的）はポート 990 を使います。多くのレンタルサーバーは「FTPS（明示的）」です",
+                "FTPS（明示的）でつなぎ直す");
+        }
+        return null;
+    }
+
+    // 方式を変えて保存し、つなぎ直す（暗黙的の 990 番を指定していたなら、ポートも既定に戻す）
+    private async Task SwitchProtocolAndConnectAsync(ConnectionItemViewModel item, ConnectionProtocol protocol, string? password)
+    {
+        var port = item.Profile.Port == ConnectionProfile.DefaultPort(item.Profile.Protocol) ? 0 : item.Profile.Port;
+        item.Profile = item.Profile with { Protocol = protocol, Port = port };
+        Log.Info($"方式を「{ProtocolName(protocol)}」に変えました", item.Name);
+        if (!item.IsTemporary)
+            await SaveConnectionsAsync().ConfigureAwait(true);
+        await ConnectAsync(item, password).ConfigureAwait(true);
+    }
+
+    // 画面に出す方式の名前（接続先の編集の選択肢と同じ言い方）
+    private static string ProtocolName(ConnectionProtocol protocol) => protocol switch
+    {
+        ConnectionProtocol.Sftp => "SFTP",
+        ConnectionProtocol.FtpsExplicit => "FTPS（明示的）",
+        ConnectionProtocol.FtpsImplicit => "FTPS（暗黙的）",
+        ConnectionProtocol.Auto => "自動",
+        _ => "FTP（暗号化なし）",
+    };
+
     // ログに書く接続先（例: SFTP・example.com:22）
     private static string DescribeTarget(ConnectionProfile profile)
     {
@@ -368,6 +422,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             ConnectionProtocol.Sftp => "SFTP",
             ConnectionProtocol.FtpsExplicit => "FTPS",
             ConnectionProtocol.FtpsImplicit => "FTPS（暗黙）",
+            ConnectionProtocol.Auto => "自動",
             _ => "FTP",
         };
         return $"{protocol}・{profile.Host}:{profile.EffectivePort}";
@@ -477,12 +532,28 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         if (!result.Succeeded)
         {
-            Log.Error($"接続できませんでした: {DisplayText.Describe(result.Failure!)}", item.Name);
+            var reason = DisplayText.Describe(result.Failure!);
+            Log.Error($"接続できませんでした: {reason}", item.Name);
             Connection.ShowDisconnected();
-            Remote.ShowNotice("接続できませんでした", DisplayText.Describe(result.Failure!), "", () => ConnectAsync(item, password));
+            if (SuggestProtocol(item.Profile, result.Failure!) is { } suggestion)
+            {
+                // 方式が合っていないらしい。直し方を書き、ボタン 1 つで直してつなぎ直せるようにする
+                Remote.ShowNotice(
+                    "接続できませんでした",
+                    reason,
+                    suggestion.Hint,
+                    () => SwitchProtocolAndConnectAsync(item, suggestion.Protocol, password),
+                    suggestion.ButtonText);
+            }
+            else
+            {
+                Remote.ShowNotice("接続できませんでした", reason, "", () => ConnectAsync(item, password));
+            }
             return;
         }
 
+        if (result.Profile.Protocol != item.Profile.Protocol)
+            await RememberProtocolAsync(item, result.Profile.Protocol).ConfigureAwait(true);
         _session = result;
         _connected = item;
         item.IsConnected = true;

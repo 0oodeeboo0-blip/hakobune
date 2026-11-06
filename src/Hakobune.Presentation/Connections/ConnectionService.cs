@@ -106,6 +106,9 @@ public sealed class ConnectResult
         IsCancelled = cancelled;
     }
 
+    /// <summary>
+    /// 接続先。つながったときは、実際につながった方式（「自動」で接続したなら、決まった方式）になっている。
+    /// </summary>
     public ConnectionProfile Profile { get; }
 
     /// <summary>転送用の接続を作るもの（画面用の接続とは別に作る）。</summary>
@@ -216,16 +219,18 @@ public sealed class ConnectionService
         var passphrase = _passphrases.GetValueOrDefault(profile.Id);
         var passwordAttempts = 1;
         var passphraseAttempts = 0;
+        // 「自動」は、まず暗号化（FTPS・明示的）で試す。つながった方式を結果の接続先に入れて返す
+        var attempt = profile.Protocol == ConnectionProtocol.Auto ? profile with { Protocol = ConnectionProtocol.FtpsExplicit } : profile;
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
             var rejected = new RejectionFlag();
             var factory = _createFactory(
-                profile,
+                attempt,
                 new ConnectionCredentials(password, passphrase),
-                CreateHostKeyValidator(profile, rejected),
-                CreateCertificateValidator(profile, rejected),
-                ProtocolLogFor(profile));
+                CreateHostKeyValidator(attempt, rejected),
+                CreateCertificateValidator(attempt, rejected),
+                ProtocolLogFor(attempt));
             var browser = new RemoteBrowser(factory);
             string home;
             try
@@ -242,6 +247,15 @@ public sealed class ConnectionService
                     return ConnectResult.Cancelled(profile);
 
                 var failure = FailureClassifier.FromException(ex);
+                if (failure.Reason == FailureReason.EncryptionNotSupported
+                    && profile.Protocol == ConnectionProtocol.Auto
+                    && attempt.Protocol == ConnectionProtocol.FtpsExplicit)
+                {
+                    // 暗号化に対応していないサーバー。FFFTP と同じく、暗号化なしの FTP でつなぎ直す
+                    _log?.Warning("サーバーが暗号化（FTPS）に対応していないので、暗号化なしの FTP でつなぎます", profile.DisplayName);
+                    attempt = profile with { Protocol = ConnectionProtocol.Ftp };
+                    continue;
+                }
                 if (failure.Reason == FailureReason.KeyPassphraseRequired && passphraseAttempts < MaxPasswordAttempts)
                 {
                     // 秘密鍵にパスフレーズが掛かっている（または違った）。聞いてやり直す
@@ -253,7 +267,7 @@ public sealed class ConnectionService
                     passphraseAttempts++;
                     continue;
                 }
-                if (failure.Reason != FailureReason.AuthenticationFailed || passwordAttempts >= MaxPasswordAttempts || !SessionFactories.NeedsPassword(profile))
+                if (failure.Reason != FailureReason.AuthenticationFailed || passwordAttempts >= MaxPasswordAttempts || !SessionFactories.NeedsPassword(attempt))
                     return ConnectResult.Failed(profile, failure);
 
                 // パスワードが違った。保存してあったものは消して、聞き直す
@@ -271,7 +285,7 @@ public sealed class ConnectionService
                 _secrets.TryWrite(profile.Id, password);
             if (passphrase is not null)
                 _passphrases[profile.Id] = passphrase;
-            return ConnectResult.Connected(profile, factory, browser, home);
+            return ConnectResult.Connected(attempt, factory, browser, home);
         }
     }
 

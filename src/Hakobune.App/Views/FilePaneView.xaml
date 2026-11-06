@@ -36,151 +36,161 @@
     <UserControl.Resources>
         <!--  一覧の 1 行: アイコン、名前、大きさ、更新日時、属性  -->
         <DataTemplate x:Key="FileRowTemplate" x:DataType="files:FileRowViewModel">
-            <Grid ColumnSpacing="8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="72" />
-                    <ColumnDefinition Width="124" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
-
-                <Grid ColumnSpacing="8">
+            <Grid>
+                <!--  取り直しで増えた・変わった行の光（ふだんは見えない。FilePaneView.xaml.cs が光らせて消す）。
+                      形は、選んだ行やマウスを乗せた行の背景と同じ（行の内側に左右 4・上下 2、角丸 4）  -->
+                <Border
+                    Margin="-10,2"
+                    Background="{ThemeResource HakobuneRowGlowBrush}"
+                    CornerRadius="4"
+                    IsHitTestVisible="False"
+                    Opacity="0" />
+                <Grid VerticalAlignment="Center" ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="20" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="72" />
+                        <ColumnDefinition Width="124" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <Grid
-                        Width="20"
-                        Height="20"
-                        VerticalAlignment="Center">
-                        <!--  フォルダ  -->
-                        <Path
-                            Data="M 2.5,6 A 1.75,1.75 0 0 1 4.25,4.25 L 7.35,4.25 C 7.75,4.25 8.13,4.41 8.41,4.69 L 9.6,5.9 L 15.75,5.9 A 1.75,1.75 0 0 1 17.5,7.65 L 17.5,14.25 A 1.75,1.75 0 0 1 15.75,16 L 4.25,16 A 1.75,1.75 0 0 1 2.5,14.25 Z"
-                            Fill="{ThemeResource HakobuneFolderFillBrush}"
-                            Stroke="{ThemeResource HakobuneFolderStrokeBrush}"
-                            StrokeThickness="1"
-                            Visibility="{x:Bind IsFolder}" />
-                        <Path
-                            Data="M 2.5,8.1 L 17.5,8.1"
-                            Opacity="0.55"
-                            Stroke="{ThemeResource HakobuneFolderStrokeBrush}"
-                            StrokeThickness="1"
-                            Visibility="{x:Bind IsFolder}" />
-                        <!--  ドライブ  -->
-                        <Canvas Visibility="{x:Bind IsDrive}">
-                            <Rectangle
-                                Canvas.Left="2"
-                                Canvas.Top="5.5"
-                                Width="16"
-                                Height="9"
-                                RadiusX="2.5"
-                                RadiusY="2.5"
-                                Stroke="{ThemeResource TextFillColorSecondaryBrush}"
-                                StrokeThickness="1.5" />
+
+                    <Grid ColumnSpacing="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="20" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid
+                            Width="20"
+                            Height="20"
+                            VerticalAlignment="Center">
+                            <!--  フォルダ  -->
                             <Path
-                                Data="M 5.5,10 L 9,10"
+                                Data="M 2.5,6 A 1.75,1.75 0 0 1 4.25,4.25 L 7.35,4.25 C 7.75,4.25 8.13,4.41 8.41,4.69 L 9.6,5.9 L 15.75,5.9 A 1.75,1.75 0 0 1 17.5,7.65 L 17.5,14.25 A 1.75,1.75 0 0 1 15.75,16 L 4.25,16 A 1.75,1.75 0 0 1 2.5,14.25 Z"
+                                Fill="{ThemeResource HakobuneFolderFillBrush}"
+                                Stroke="{ThemeResource HakobuneFolderStrokeBrush}"
+                                StrokeThickness="1"
+                                Visibility="{x:Bind IsFolder}" />
+                            <Path
+                                Data="M 2.5,8.1 L 17.5,8.1"
+                                Opacity="0.55"
+                                Stroke="{ThemeResource HakobuneFolderStrokeBrush}"
+                                StrokeThickness="1"
+                                Visibility="{x:Bind IsFolder}" />
+                            <!--  ドライブ  -->
+                            <Canvas Visibility="{x:Bind IsDrive}">
+                                <Rectangle
+                                    Canvas.Left="2"
+                                    Canvas.Top="5.5"
+                                    Width="16"
+                                    Height="9"
+                                    RadiusX="2.5"
+                                    RadiusY="2.5"
+                                    Stroke="{ThemeResource TextFillColorSecondaryBrush}"
+                                    StrokeThickness="1.5" />
+                                <Path
+                                    Data="M 5.5,10 L 9,10"
+                                    Stroke="{ThemeResource TextFillColorSecondaryBrush}"
+                                    StrokeEndLineCap="Round"
+                                    StrokeStartLineCap="Round"
+                                    StrokeThickness="1.5" />
+                                <Ellipse
+                                    Canvas.Left="13.1"
+                                    Canvas.Top="9.1"
+                                    Width="1.8"
+                                    Height="1.8"
+                                    Fill="{ThemeResource HakobuneAccentTextBrush}" />
+                            </Canvas>
+                            <!--  ファイルの紙（すべてのファイルに共通）  -->
+                            <Path
+                                Data="M 5.5,2.75 L 11.25,2.75 L 14.75,6.25 L 14.75,16.25 A 1.5,1.5 0 0 1 13.25,17.75 L 5.5,17.75 A 1.5,1.5 0 0 1 4,16.25 L 4,4.25 A 1.5,1.5 0 0 1 5.5,2.75 Z M 11,2.75 L 11,6.5 L 14.75,6.5"
+                                Stroke="{ThemeResource TextFillColorSecondaryBrush}"
+                                StrokeEndLineCap="Round"
+                                StrokeLineJoin="Round"
+                                StrokeStartLineCap="Round"
+                                StrokeThickness="1.5"
+                                Visibility="{x:Bind IsFile}" />
+                            <!--  プログラム  -->
+                            <Path
+                                Data="M 8.25,10.25 L 6.75,11.75 L 8.25,13.25 M 11.75,10.25 L 13.25,11.75 L 11.75,13.25"
+                                Stroke="{ThemeResource HakobuneAccentTextBrush}"
+                                StrokeEndLineCap="Round"
+                                StrokeLineJoin="Round"
+                                StrokeStartLineCap="Round"
+                                StrokeThickness="1.5"
+                                Visibility="{x:Bind IsCode}" />
+                            <!--  画像  -->
+                            <Path
+                                Data="M 6.6,15.25 L 8.9,12.5 L 10.65,14.5 L 11.85,13.05 L 13.6,15.25"
+                                Stroke="{ThemeResource HakobuneAccentTextBrush}"
+                                StrokeEndLineCap="Round"
+                                StrokeLineJoin="Round"
+                                StrokeStartLineCap="Round"
+                                StrokeThickness="1.5"
+                                Visibility="{x:Bind IsImage}" />
+                            <Canvas Visibility="{x:Bind IsImage}">
+                                <Ellipse
+                                    Canvas.Left="6.6"
+                                    Canvas.Top="7.95"
+                                    Width="3.6"
+                                    Height="3.6"
+                                    Stroke="{ThemeResource HakobuneAccentTextBrush}"
+                                    StrokeThickness="1.5" />
+                            </Canvas>
+                            <!--  圧縮ファイル  -->
+                            <Path
+                                Data="M 8.6,5.25 L 9.9,5.25 M 8.6,7.5 L 9.9,7.5 M 8.6,9.75 L 9.9,9.75"
                                 Stroke="{ThemeResource TextFillColorSecondaryBrush}"
                                 StrokeEndLineCap="Round"
                                 StrokeStartLineCap="Round"
-                                StrokeThickness="1.5" />
-                            <Ellipse
-                                Canvas.Left="13.1"
-                                Canvas.Top="9.1"
-                                Width="1.8"
-                                Height="1.8"
-                                Fill="{ThemeResource HakobuneAccentTextBrush}" />
-                        </Canvas>
-                        <!--  ファイルの紙（すべてのファイルに共通）  -->
-                        <Path
-                            Data="M 5.5,2.75 L 11.25,2.75 L 14.75,6.25 L 14.75,16.25 A 1.5,1.5 0 0 1 13.25,17.75 L 5.5,17.75 A 1.5,1.5 0 0 1 4,16.25 L 4,4.25 A 1.5,1.5 0 0 1 5.5,2.75 Z M 11,2.75 L 11,6.5 L 14.75,6.5"
-                            Stroke="{ThemeResource TextFillColorSecondaryBrush}"
-                            StrokeEndLineCap="Round"
-                            StrokeLineJoin="Round"
-                            StrokeStartLineCap="Round"
-                            StrokeThickness="1.5"
-                            Visibility="{x:Bind IsFile}" />
-                        <!--  プログラム  -->
-                        <Path
-                            Data="M 8.25,10.25 L 6.75,11.75 L 8.25,13.25 M 11.75,10.25 L 13.25,11.75 L 11.75,13.25"
-                            Stroke="{ThemeResource HakobuneAccentTextBrush}"
-                            StrokeEndLineCap="Round"
-                            StrokeLineJoin="Round"
-                            StrokeStartLineCap="Round"
-                            StrokeThickness="1.5"
-                            Visibility="{x:Bind IsCode}" />
-                        <!--  画像  -->
-                        <Path
-                            Data="M 6.6,15.25 L 8.9,12.5 L 10.65,14.5 L 11.85,13.05 L 13.6,15.25"
-                            Stroke="{ThemeResource HakobuneAccentTextBrush}"
-                            StrokeEndLineCap="Round"
-                            StrokeLineJoin="Round"
-                            StrokeStartLineCap="Round"
-                            StrokeThickness="1.5"
-                            Visibility="{x:Bind IsImage}" />
-                        <Canvas Visibility="{x:Bind IsImage}">
-                            <Ellipse
-                                Canvas.Left="6.6"
-                                Canvas.Top="7.95"
-                                Width="3.6"
-                                Height="3.6"
-                                Stroke="{ThemeResource HakobuneAccentTextBrush}"
-                                StrokeThickness="1.5" />
-                        </Canvas>
-                        <!--  圧縮ファイル  -->
-                        <Path
-                            Data="M 8.6,5.25 L 9.9,5.25 M 8.6,7.5 L 9.9,7.5 M 8.6,9.75 L 9.9,9.75"
-                            Stroke="{ThemeResource TextFillColorSecondaryBrush}"
-                            StrokeEndLineCap="Round"
-                            StrokeStartLineCap="Round"
-                            StrokeThickness="1.5"
-                            Visibility="{x:Bind IsArchive}" />
-                        <Canvas Visibility="{x:Bind IsArchive}">
-                            <Rectangle
-                                Canvas.Left="7.15"
-                                Canvas.Top="11"
-                                Width="4.2"
-                                Height="4.5"
-                                RadiusX="1.45"
-                                RadiusY="1.45"
+                                StrokeThickness="1.5"
+                                Visibility="{x:Bind IsArchive}" />
+                            <Canvas Visibility="{x:Bind IsArchive}">
+                                <Rectangle
+                                    Canvas.Left="7.15"
+                                    Canvas.Top="11"
+                                    Width="4.2"
+                                    Height="4.5"
+                                    RadiusX="1.45"
+                                    RadiusY="1.45"
+                                    Stroke="{ThemeResource TextFillColorSecondaryBrush}"
+                                    StrokeThickness="1.5" />
+                            </Canvas>
+                            <!--  テキスト・文書  -->
+                            <Path
+                                Data="M 6.75,10.25 L 12,10.25 M 6.75,12.5 L 12,12.5 M 6.75,14.75 L 10,14.75"
                                 Stroke="{ThemeResource TextFillColorSecondaryBrush}"
-                                StrokeThickness="1.5" />
-                        </Canvas>
-                        <!--  テキスト・文書  -->
-                        <Path
-                            Data="M 6.75,10.25 L 12,10.25 M 6.75,12.5 L 12,12.5 M 6.75,14.75 L 10,14.75"
-                            Stroke="{ThemeResource TextFillColorSecondaryBrush}"
-                            StrokeEndLineCap="Round"
-                            StrokeStartLineCap="Round"
-                            StrokeThickness="1.5"
-                            Visibility="{x:Bind IsText}" />
-                        <!--  音声・動画  -->
-                        <Path
-                            Data="M 8.5,10.5 L 8.5,15 L 12.25,12.75 Z"
-                            Fill="{ThemeResource HakobuneAccentTextBrush}"
-                            Visibility="{x:Bind IsMedia}" />
+                                StrokeEndLineCap="Round"
+                                StrokeStartLineCap="Round"
+                                StrokeThickness="1.5"
+                                Visibility="{x:Bind IsText}" />
+                            <!--  音声・動画  -->
+                            <Path
+                                Data="M 8.5,10.5 L 8.5,15 L 12.25,12.75 Z"
+                                Fill="{ThemeResource HakobuneAccentTextBrush}"
+                                Visibility="{x:Bind IsMedia}" />
+                        </Grid>
+                        <TextBlock
+                            Grid.Column="1"
+                            VerticalAlignment="Center"
+                            Text="{x:Bind Name}"
+                            TextTrimming="CharacterEllipsis" />
                     </Grid>
                     <TextBlock
                         Grid.Column="1"
-                        VerticalAlignment="Center"
-                        Text="{x:Bind Name}"
-                        TextTrimming="CharacterEllipsis" />
+                        HorizontalAlignment="Right"
+                        Style="{StaticResource SecondaryCaptionTextStyle}"
+                        Text="{x:Bind SizeText}" />
+                    <TextBlock
+                        Grid.Column="2"
+                        Style="{StaticResource SecondaryCaptionTextStyle}"
+                        Text="{x:Bind ModifiedText}" />
+                    <TextBlock
+                        Grid.Column="3"
+                        Width="84"
+                        FontFamily="Cascadia Mono, Consolas"
+                        Style="{StaticResource SecondaryCaptionTextStyle}"
+                        Text="{x:Bind Permissions}"
+                        Visibility="{x:Bind ShowsPermissions}" />
                 </Grid>
-                <TextBlock
-                    Grid.Column="1"
-                    HorizontalAlignment="Right"
-                    Style="{StaticResource SecondaryCaptionTextStyle}"
-                    Text="{x:Bind SizeText}" />
-                <TextBlock
-                    Grid.Column="2"
-                    Style="{StaticResource SecondaryCaptionTextStyle}"
-                    Text="{x:Bind ModifiedText}" />
-                <TextBlock
-                    Grid.Column="3"
-                    Width="84"
-                    FontFamily="Cascadia Mono, Consolas"
-                    Style="{StaticResource SecondaryCaptionTextStyle}"
-                    Text="{x:Bind Permissions}"
-                    Visibility="{x:Bind ShowsPermissions}" />
             </Grid>
         </DataTemplate>
     </UserControl.Resources>
@@ -392,7 +402,7 @@
                     Grid.Column="2"
                     VerticalAlignment="Center"
                     Command="{x:Bind ViewModel.RetryCommand, Mode=OneWay}"
-                    Content="今すぐ再試行" />
+                    Content="{x:Bind ViewModel.RetryText, Mode=OneWay}" />
             </Grid>
         </Border>
 
@@ -472,6 +482,7 @@
             Grid.Row="4"
             Padding="0,4"
             CanDragItems="True"
+            ContainerContentChanging="OnContainerContentChanging"
             DoubleTapped="OnListDoubleTapped"
             DragItemsStarting="OnDragItemsStarting"
             ItemContainerStyle="{x:Bind helpers:Ui.FileRowStyle(ViewModel.UseCompactRows), Mode=OneWay}"
@@ -479,7 +490,12 @@
             ItemsSource="{x:Bind ViewModel.Items, Mode=OneWay}"
             KeyDown="OnListKeyDown"
             SelectionChanged="OnSelectionChanged"
-            SelectionMode="Extended" />
+            SelectionMode="Extended">
+            <!--  一覧を取り直したときに行が拡大・縮小しないよう、出入りの動きは付けない  -->
+            <ListView.ItemContainerTransitions>
+                <TransitionCollection />
+            </ListView.ItemContainerTransitions>
+        </ListView>
         <StackPanel
             Grid.Row="4"
             MaxWidth="360"

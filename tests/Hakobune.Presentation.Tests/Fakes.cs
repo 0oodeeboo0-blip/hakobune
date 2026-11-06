@@ -24,6 +24,69 @@ internal sealed class ManualTime(DateTimeOffset start) : TimeProvider
     }
 }
 
+/// <summary>時刻を進めたときだけタイマーが動く時計（決まった時間がたったあとの動きを確かめる）。</summary>
+internal sealed class SteppingTime(DateTimeOffset start) : TimeProvider
+{
+    private readonly List<SteppingTimer> _timers = [];
+    private DateTimeOffset _now = start;
+
+    public override DateTimeOffset GetUtcNow() => _now;
+
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+    {
+        var timer = new SteppingTimer(this, callback, state);
+        timer.Change(dueTime, period);
+        return timer;
+    }
+
+    /// <summary>時刻を進め、時間になったタイマーを動かす（くり返しのタイマーは 1 回だけ動かす）。</summary>
+    public void Advance(TimeSpan by)
+    {
+        SteppingTimer[] due;
+        lock (_timers)
+        {
+            _now += by;
+            due = [.. _timers.Where(timer => timer.DueAt <= _now)];
+            foreach (var timer in due)
+                _timers.Remove(timer);
+        }
+        foreach (var timer in due)
+            timer.Fire();
+    }
+
+    private sealed class SteppingTimer(SteppingTime owner, TimerCallback callback, object? state) : ITimer
+    {
+        public DateTimeOffset DueAt { get; private set; }
+
+        public bool Change(TimeSpan dueTime, TimeSpan period)
+        {
+            lock (owner._timers)
+            {
+                owner._timers.Remove(this);
+                if (dueTime == Timeout.InfiniteTimeSpan)
+                    return true;
+                DueAt = owner._now + dueTime;
+                owner._timers.Add(this);
+            }
+            return true;
+        }
+
+        public void Fire() => callback(state);
+
+        public void Dispose()
+        {
+            lock (owner._timers)
+                owner._timers.Remove(this);
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            Dispose();
+            return ValueTask.CompletedTask;
+        }
+    }
+}
+
 /// <summary>決まった中身を返す一覧。失敗もさせられる。</summary>
 internal sealed class FakeFileSource : IFileSource
 {

@@ -50,6 +50,12 @@ public enum FailureReason
     /// <summary>同じ名前のファイルがあるため、フォルダを作れない。</summary>
     NameConflictsWithFile,
 
+    /// <summary>サーバーが暗号化（FTPS）に対応していない（AUTH TLS を断られた）。</summary>
+    EncryptionNotSupported,
+
+    /// <summary>サーバーが暗号化（FTPS）でないと入れてくれない。</summary>
+    EncryptionRequired,
+
     /// <summary>ログインできない。</summary>
     AuthenticationFailed,
 

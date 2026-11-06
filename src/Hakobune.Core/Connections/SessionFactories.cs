@@ -66,7 +66,8 @@ public static class SessionFactories
             Password = credentials.Password ?? (anonymous ? "anonymous@" : ""),
             Security = profile.Protocol switch
             {
-                ConnectionProtocol.FtpsExplicit => FtpSecurity.Explicit,
+                // 自動は、まず明示的な FTPS で試す（暗号化なしに切り替えるかは、接続する側が決める）
+                ConnectionProtocol.FtpsExplicit or ConnectionProtocol.Auto => FtpSecurity.Explicit,
                 ConnectionProtocol.FtpsImplicit => FtpSecurity.Implicit,
                 _ => FtpSecurity.None,
             },

@@ -3,7 +3,7 @@ using Hakobune.Core.Text;
 
 namespace Hakobune.Presentation.Files;
 
-/// <summary>一覧の 1 行。中身は変わらないので、変更の通知はしない。</summary>
+/// <summary>一覧の 1 行。表示する中身は変わらないので、変更の通知はしない。</summary>
 public sealed class FileRowViewModel
 {
     /// <summary>項目から行を作る。日時は <paramref name="timeZone"/> の時刻で表示する。</summary>
@@ -47,6 +47,12 @@ public sealed class FileRowViewModel
 
     /// <summary>ファイルか（フォルダでないか）。</summary>
     public bool IsFile => !IsDirectory;
+
+    /// <summary>
+    /// 同じフォルダの取り直しで、増えた・変わった行か（画面がしばらく、うすい色で光らせる）。
+    /// <see cref="FilePaneViewModel.HighlightDuration"/> がたつと false に戻る。画面は行を出すときに見るだけなので、通知はしない。
+    /// </summary>
+    public bool IsHighlighted { get; internal set; }
 
     /// <summary>読み上げ用の説明。</summary>
     public string AccessibleName => Kind switch

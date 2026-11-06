@@ -68,7 +68,9 @@ public sealed class FilePaneViewModel : ObservableObject
     private Func<Task>? _externalRetry;
     private string? _busyText;
 
-    /// <summary>一覧を作る。<paramref name="timeProvider"/> は時刻の表示と自動の取り直しに使う。</summary>
+    /// <summary>
+    /// 一覧を作る。<paramref name="timeProvider"/> は、時刻の表示、自動の取り直し、増えた・変わった行を光らせる時間に使う。
+    /// </summary>
     public FilePaneViewModel(PaneKind kind, TimeProvider? timeProvider = null)
     {
         Kind = kind;
@@ -79,6 +81,9 @@ public sealed class FilePaneViewModel : ObservableObject
         OpenCommand = new AsyncRelayCommand<FileRowViewModel>(OpenAsync);
         NavigateToSegmentCommand = new AsyncRelayCommand<PathSegment>(segment => segment is null ? Task.CompletedTask : NavigateAsync(segment.Path));
     }
+
+    /// <summary>取り直しで増えた・変わった行を光らせておく時間（画面の光も、この長さで消える）。</summary>
+    public static TimeSpan HighlightDuration { get; } = TimeSpan.FromMilliseconds(3200);
 
     /// <summary>左右どちらか。</summary>
     public PaneKind Kind { get; }
@@ -410,14 +415,20 @@ public sealed class FilePaneViewModel : ObservableObject
     /// <summary>
     /// 一覧の外で起きたこと（接続できなかったなど）を知らせる。<paramref name="retry"/> を渡すと「今すぐ再試行」で呼ぶ。
     /// </summary>
-    public void ShowNotice(string title, string reason, string text = "", Func<Task>? retry = null)
+    public void ShowNotice(string title, string reason, string text = "", Func<Task>? retry = null, string? retryText = null)
     {
         ArgumentNullException.ThrowIfNull(title);
         ArgumentNullException.ThrowIfNull(reason);
         ShowMessage(title, reason, text ?? "");
         _externalRetry = retry;
+        RetryText = retryText ?? DefaultRetryText;
         RetryCommand.NotifyCanExecuteChanged();
     }
+
+    private const string DefaultRetryText = "今すぐ再試行";
+
+    /// <summary>知らせのボタンの文字（ふつうは「今すぐ再試行」。直し方があれば「FTPS（明示的）でつなぎ直す」など）。</summary>
+    public string RetryText { get; private set => SetProperty(ref field, value); } = DefaultRetryText;
 
     /// <summary>「接続しています…」のように、一覧の代わりに出す文字を決める。null で戻す。</summary>
     public void SetBusy(string? text)
@@ -561,8 +572,9 @@ public sealed class FilePaneViewModel : ObservableObject
             _hasLoaded = true;
             CurrentPath = listing.Path;
             UpdateBreadcrumbs();
-            _rows = listing.Entries.Select(entry => new FileRowViewModel(entry, _time.LocalTimeZone, ShowsPermissions)).ToList();
-            SelectedRows = []; // 行を作り直したので、前に選んでいた行はもう一覧にない
+            _rows = MakeRows(listing.Entries, samePath);
+            // 同じフォルダの取り直しなら、残った行の選択はそのまま
+            SelectedRows = samePath ? [.. SelectedRows.Where(_rows.Contains)] : [];
             RetrievedAt = listing.RetrievedAt;
             IsStale = false;
             HideMessage();
@@ -600,6 +612,52 @@ public sealed class FilePaneViewModel : ObservableObject
         OnViewStateChanged();
     }
 
+    // 行を作る。同じフォルダの取り直しでは、変わっていない項目の行はそのまま使う
+    // （行を入れ替えないので、一覧が動かず、選択とスクロールの位置も残る）。
+    // 増えた・変わった項目の行は、しばらく光らせる（アップロードしたものがどれか分かるように）
+    private List<FileRowViewModel> MakeRows(IReadOnlyList<FileEntry> entries, bool samePath)
+    {
+        Dictionary<FileEntry, FileRowViewModel>? current = null;
+        if (samePath)
+        {
+            current = new Dictionary<FileEntry, FileRowViewModel>(_rows.Count);
+            foreach (var row in _rows)
+                current.TryAdd(row.Entry, row);
+        }
+        var rows = new List<FileRowViewModel>(entries.Count);
+        var fresh = new List<FileRowViewModel>();
+        foreach (var entry in entries)
+        {
+            if (current is not null && current.Remove(entry, out var kept))
+            {
+                rows.Add(kept);
+                continue;
+            }
+            var row = new FileRowViewModel(entry, _time.LocalTimeZone, ShowsPermissions);
+            rows.Add(row);
+            if (samePath)
+                fresh.Add(row);
+        }
+        if (fresh.Count > 0)
+            Highlight(fresh);
+        return rows;
+    }
+
+    // 光らせ、時間がたったら戻す（そのあとで行が画面に出てきても光らない）
+    private void Highlight(List<FileRowViewModel> rows)
+    {
+        foreach (var row in rows)
+            row.IsHighlighted = true;
+        _ = EndHighlightAsync(rows);
+    }
+
+    private async Task EndHighlightAsync(List<FileRowViewModel> rows)
+    {
+        await Task.Delay(HighlightDuration, _time).ConfigureAwait(true);
+        foreach (var row in rows)
+            row.IsHighlighted = false;
+    }
+
     private void ApplyView(bool keepFocus)
     {
         var filter = FilterText.Trim();
@@ -635,6 +693,7 @@ public sealed class FilePaneViewModel : ObservableObject
         MessageTitle = title;
         MessageReason = reason;
         MessageText = text;
+        RetryText = DefaultRetryText;
         HasMessage = true;
     }
 

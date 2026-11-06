@@ -10,7 +10,8 @@ public class ConnectionProfileTests
     [Theory]
     [InlineData("sftp://user@example.com/var/www", ConnectionProtocol.Sftp, "example.com", 0, "user", null, "/var/www")]
     [InlineData("sftp://user:p%40ss@example.com:2222", ConnectionProtocol.Sftp, "example.com", 2222, "user", "p@ss", "")]
-    [InlineData("ftp://anonymous@ftp.example.jp:21/", ConnectionProtocol.Ftp, "ftp.example.jp", 0, "anonymous", null, "")]
+    // ftp:// は「自動」（暗号化できれば暗号化する）
+    [InlineData("ftp://anonymous@ftp.example.jp:21/", ConnectionProtocol.Auto, "ftp.example.jp", 0, "anonymous", null, "")]
     [InlineData("ftpes://web:secret@192.168.0.10/public_html", ConnectionProtocol.FtpsExplicit, "192.168.0.10", 0, "web", "secret", "/public_html")]
     [InlineData("ftps://host.example.com:990", ConnectionProtocol.FtpsImplicit, "host.example.com", 0, "", null, "")]
     public void Urls_become_connections(string url, ConnectionProtocol protocol, string host, int port, string user, string? password, string path)
@@ -141,6 +142,8 @@ public class SessionFactoriesTests
     [InlineData(ConnectionProtocol.Ftp, FtpSecurity.None)]
     [InlineData(ConnectionProtocol.FtpsExplicit, FtpSecurity.Explicit)]
     [InlineData(ConnectionProtocol.FtpsImplicit, FtpSecurity.Implicit)]
+    // 自動は、まず明示的な FTPS で試す
+    [InlineData(ConnectionProtocol.Auto, FtpSecurity.Explicit)]
     public void Ftp_profiles_choose_the_encryption(ConnectionProtocol protocol, FtpSecurity security)
     {
         var profile = new ConnectionProfile { Protocol = protocol, Host = "ftp.example.com", UserName = "web", FileNameEncoding = "shift_jis", UsePassiveMode = false };

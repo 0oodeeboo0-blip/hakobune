@@ -28,6 +28,8 @@ public static class DisplayText
             FailureReason.CannotCreateFile => "ファイルを作れません（名前か権限を確かめてください）",
             FailureReason.NameConflictsWithDirectory => "同じ名前のフォルダがあります",
             FailureReason.NameConflictsWithFile => "同じ名前のファイルがあるので、フォルダを作れません",
+            FailureReason.EncryptionNotSupported => "サーバーが暗号化（FTPS）に対応していません",
+            FailureReason.EncryptionRequired => "このサーバーは暗号化（FTPS）でないと入れません",
             FailureReason.AuthenticationFailed => "ログインできません（ユーザー名かパスワードを確かめてください）",
             FailureReason.KeyPassphraseRequired => "秘密鍵のパスフレーズが違うか、入っていません",
             FailureReason.KeyFileUnreadable => "秘密鍵のファイルを読めません（形式を確かめてください）",

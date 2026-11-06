@@ -17,6 +17,8 @@
                     <SolidColorBrush x:Key="HakobuneBrandBrush" Color="#FF0B6E78" />
                     <SolidColorBrush x:Key="HakobuneAccentTextBrush" Color="#FF0B6E78" />
                     <SolidColorBrush x:Key="HakobuneAccentTintBrush" Color="#1C0B6E78" />
+                    <!-- 取り直しで増えた・変わった行の光（しばらくして消える） -->
+                    <SolidColorBrush x:Key="HakobuneRowGlowBrush" Color="#3D0B6E78" />
                     <SolidColorBrush x:Key="HakobuneFolderFillBrush" Color="#FFF2C45A" />
                     <SolidColorBrush x:Key="HakobuneFolderStrokeBrush" Color="#FFC08A1A" />
                     <SolidColorBrush x:Key="HakobuneFailedTextBrush" Color="#FFB3261E" />
@@ -38,6 +40,7 @@
                     <SolidColorBrush x:Key="HakobuneBrandBrush" Color="#FF0B6E78" />
                     <SolidColorBrush x:Key="HakobuneAccentTextBrush" Color="#FF64CED8" />
                     <SolidColorBrush x:Key="HakobuneAccentTintBrush" Color="#2E64CED8" />
+                    <SolidColorBrush x:Key="HakobuneRowGlowBrush" Color="#3D64CED8" />
                     <SolidColorBrush x:Key="HakobuneFolderFillBrush" Color="#FFD9A63C" />
                     <SolidColorBrush x:Key="HakobuneFolderStrokeBrush" Color="#FFA27718" />
                     <SolidColorBrush x:Key="HakobuneFailedTextBrush" Color="#FFFF99A4" />
@@ -59,6 +62,7 @@
                     <SolidColorBrush x:Key="HakobuneBrandBrush" Color="{ThemeResource SystemColorHighlightColor}" />
                     <SolidColorBrush x:Key="HakobuneAccentTextBrush" Color="{ThemeResource SystemColorHighlightColor}" />
                     <SolidColorBrush x:Key="HakobuneAccentTintBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="HakobuneRowGlowBrush" Color="Transparent" />
                     <SolidColorBrush x:Key="HakobuneFolderFillBrush" Color="Transparent" />
                     <SolidColorBrush x:Key="HakobuneFolderStrokeBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
                     <SolidColorBrush x:Key="HakobuneFailedTextBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
@@ -224,6 +228,8 @@
             <Style x:Key="FileRowContainerStyle" BasedOn="{StaticResource DefaultListViewItemStyle}" TargetType="ListViewItem">
                 <Setter Property="MinHeight" Value="34" />
                 <Setter Property="Padding" Value="14,0" />
+                <!-- 行の光が行の高さいっぱいに出るよう、中身は上下に広げる（文字は行の中で中央にそろえてある） -->
+                <Setter Property="VerticalContentAlignment" Value="Stretch" />
             </Style>
 
             <!-- 設定の「行の高さ: コンパクト」 -->

@@ -18,6 +18,12 @@ public enum ConnectionProtocol
 
     /// <summary>SFTP（SSH）。</summary>
     Sftp,
+
+    /// <summary>
+    /// 自動（FFFTP のように選ばなくてよい）。暗号化（FTPS・明示的）を先に試し、サーバーが暗号化に対応していなければ、
+    /// 暗号化なしの FTP でつなぐ。つながったら、その方式をこの接続先に覚える。
+    /// </summary>
+    Auto,
 }
 
 /// <summary>
@@ -81,17 +87,19 @@ public sealed record ConnectionProfile
         _ => 21,
     };
 
-    /// <summary>方式の短い名前（FTP、FTPS、SFTP）。</summary>
+    /// <summary>方式の短い名前（FTP、FTPS、SFTP。自動でまだ決まっていなければ「FTP（自動）」）。</summary>
     public static string ProtocolLabel(ConnectionProtocol protocol) => protocol switch
     {
         ConnectionProtocol.Ftp => "FTP",
         ConnectionProtocol.Sftp => "SFTP",
+        ConnectionProtocol.Auto => "FTP（自動）",
         _ => "FTPS",
     };
 
     /// <summary>
     /// 「sftp://user@example.com:22/var/www」のような書き方から接続先を作る（クイック接続やコマンドライン用）。
-    /// ftp、ftpes（明示的 FTPS）、ftps（暗黙的 FTPS）、sftp に対応する。URL にパスワードがあれば <paramref name="password"/> に返す。
+    /// ftp（自動。暗号化できれば暗号化する）、ftpes（明示的 FTPS）、ftps（暗黙的 FTPS）、sftp に対応する。
+    /// URL にパスワードがあれば <paramref name="password"/> に返す。
     /// </summary>
     public static bool TryParseUrl(string text, out ConnectionProfile profile, out string? password)
     {
@@ -102,7 +110,7 @@ public sealed record ConnectionProfile
 
         ConnectionProtocol? protocol = uri.Scheme.ToLowerInvariant() switch
         {
-            "ftp" => ConnectionProtocol.Ftp,
+            "ftp" => ConnectionProtocol.Auto,
             "ftpes" => ConnectionProtocol.FtpsExplicit,
             "ftps" => ConnectionProtocol.FtpsImplicit,
             "sftp" or "ssh" => ConnectionProtocol.Sftp,

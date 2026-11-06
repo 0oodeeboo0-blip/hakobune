@@ -41,6 +41,12 @@ public sealed class ObservableList<T> : ObservableCollection<T>
 
         var wanted = new HashSet<T>(desired, comparer);
         var present = new HashSet<T>(this, comparer);
+        if (!wanted.Overlaps(present))
+        {
+            // 重なりが無い（別のフォルダを開いた）なら、1 つずつ入れ替えるより、まとめて入れ替える方が軽い
+            ReplaceAll(desired);
+            return;
+        }
         var moves = 0;
         int i = 0, j = 0;
         while (j < desired.Count)

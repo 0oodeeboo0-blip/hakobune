@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Hakobune.App.Helpers;
 using Hakobune.Presentation.Files;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -59,6 +60,14 @@ public sealed partial class FilePaneView : UserControl
 
     private void OnSelectionChanged(object sender, SelectionChangedEventArgs e) =>
         ViewModel?.UpdateSelection(FileList.SelectedItems.OfType<FileRowViewModel>().ToList());
+
+    // 取り直しで増えた・変わった行を、そっと光らせる（行の入れ物が別の行に使われるたびに呼ばれる）
+    private void OnContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
+    {
+        if (args.ItemContainer?.ContentTemplateRoot is not Panel root || root.Children.Count == 0 || root.Children[0] is not Border glow)
+            return;
+        RowGlow.Show(glow, !args.InRecycleQueue && args.Item is FileRowViewModel { IsHighlighted: true });
+    }
 
     private async void OnListDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {

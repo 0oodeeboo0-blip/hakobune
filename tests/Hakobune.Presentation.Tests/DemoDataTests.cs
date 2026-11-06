@@ -68,6 +68,23 @@ public class DemoDataTests
     }
 
     [Fact]
+    public async Task The_refreshed_scenario_highlights_only_what_the_upload_changed()
+    {
+        using var main = await DemoData.CreateAsync(DemoScenario.Refreshed);
+        var before = main.Remote.Items.ToList();
+
+        await DemoData.ShowUploadedAsync(main);
+
+        Assert.Equal(13, main.Remote.Items.Count);
+        Assert.Equal(
+            new[] { "banner.jpg", "campaign.html", "index.html" },
+            main.Remote.Items.Where(item => item.IsHighlighted).Select(item => item.Name).ToArray());
+        Assert.Equal("19 KB", main.Remote.Items.Single(item => item.Name == "index.html").SizeText);
+        // 変わっていない行は、そのまま（画面の行が動かない）
+        Assert.Same(before[0], main.Remote.Items[0]);
+    }
+
+    [Fact]
     public async Task The_connections_and_title_bar_match_the_design()
     {
         using var main = await DemoData.CreateAsync(DemoScenario.Normal);

@@ -14,6 +14,28 @@ public class RemoteIntegrationTests
 {
     public static TheoryData<string> Servers => new() { "VSFTPD", "VSFTPD_FTPES", "PUREFTPD", "PROFTPD", "SFTP" };
 
+    /// <summary>暗号化（TLS）なしで立てている FTP サーバー。</summary>
+    public static TheoryData<string> PlainFtpServers => new() { "PUREFTPD", "PROFTPD" };
+
+    [Theory]
+    [MemberData(nameof(PlainFtpServers))]
+    public async Task A_server_without_tls_refuses_explicit_ftps_with_a_clear_reason(string name)
+    {
+        // 方式が「自動」なら、この理由のときだけ暗号化なしの FTP でつなぎ直す
+        var server = TestServers.Find(name, scheme: "ftpes");
+        if (server is null)
+        {
+            Assert.Skip(TestServers.SkipReason(name));
+            return;
+        }
+
+        await using var session = server.Factory.Create();
+        var error = await Assert.ThrowsAsync<RemoteOperationException>(() => session.ConnectAsync(TestContext.Current.CancellationToken));
+
+        Assert.Equal(FailureReason.EncryptionNotSupported, error.Failure.Reason);
+        Assert.False(error.Failure.IsTransient);
+    }
+
     [Theory]
     [MemberData(nameof(Servers))]
     public async Task Basic_operations_work_on_a_real_server(string name)

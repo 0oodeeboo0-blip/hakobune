@@ -21,13 +21,19 @@ internal sealed record TestServer(string Host, int Port, Func<string, int, IRemo
 /// </summary>
 internal static class TestServers
 {
-    public static TestServer? Find(string name)
+    /// <summary>
+    /// 接続先を探す。<paramref name="scheme"/> を渡すと、同じサーバーに別の方式でつなぐ
+    /// （例: 暗号化なしで立てたサーバーに ftpes でつなぎ、断られるのを確かめる）。
+    /// </summary>
+    public static TestServer? Find(string name, string? scheme = null)
     {
         var value = Environment.GetEnvironmentVariable(VariableName(name));
         if (string.IsNullOrWhiteSpace(value))
             return null;
 
         var uri = new Uri(value);
+        if (scheme is not null)
+            uri = new Uri(scheme + value[uri.Scheme.Length..]);
         var userInfo = uri.UserInfo.Split(':', 2);
         var user = Uri.UnescapeDataString(userInfo[0]);
         var password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : "";

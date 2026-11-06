@@ -391,7 +391,10 @@ internal static class FtpErrors
             case FtpInvalidCertificateException:
                 return Wrap(TransferFailure.Permanent(FailureReason.CertificateRejected, exception.Message), exception);
 
+            // AUTH TLS を断られた（サーバーが FTPS に対応していない）
             case FtpSecurityNotAvailableException:
+                return Wrap(TransferFailure.Permanent(FailureReason.EncryptionNotSupported, exception.Message), exception);
+
             case AuthenticationException:
                 return Wrap(TransferFailure.Permanent(FailureReason.SecureConnectionFailed, exception.Message), exception);
 

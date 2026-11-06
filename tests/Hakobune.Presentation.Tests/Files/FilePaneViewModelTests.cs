@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using Hakobune.Core.Transfers;
 using Hakobune.Presentation.Files;
 
@@ -30,6 +31,17 @@ public class FilePaneViewModelTests
 
     private static string[] Names(FilePaneViewModel pane) => [.. pane.Items.Select(item => item.Name)];
 
+    private static async Task WaitForAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline)
+                throw new TimeoutException("待っていた状態になりませんでした");
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+        }
+    }
+
     [Fact]
     public async Task Opens_the_start_folder_with_folders_first()
     {
@@ -41,6 +53,96 @@ public class FilePaneViewModelTests
         Assert.Equal("4 項目", pane.SummaryText);
         Assert.False(pane.HasMessage);
         Assert.True(pane.CanGoUp);
+    }
+
+    [Fact]
+    public async Task Refreshing_keeps_the_rows_that_did_not_change()
+    {
+        var (pane, source) = await OpenAsync();
+        var folderRow = pane.Items[0];
+        var a = pane.Items.Single(row => row.Name == "a.txt");
+        var b = pane.Items.Single(row => row.Name == "b.txt");
+        pane.UpdateSelection([a, b]);
+        var changes = new List<NotifyCollectionChangedAction>();
+        pane.Items.CollectionChanged += (_, e) => changes.Add(e.Action);
+
+        // b.txt が大きくなり、c.txt が増えた
+        var entries = source.Folders["/data"];
+        entries[entries.FindIndex(entry => entry.Name == "b.txt")] = FakeFileSource.File("/data", "b.txt", 900);
+        entries.Add(FakeFileSource.File("/data", "c.txt", 10));
+        await pane.RefreshAsync();
+
+        Assert.Equal(new[] { "sub", "Zed", "a.txt", "b.txt", "c.txt" }, Names(pane));
+        // 変わっていない行は同じもの（画面の行が作り直されず、動かない）
+        Assert.Same(folderRow, pane.Items[0]);
+        Assert.Same(a, pane.Items.Single(row => row.Name == "a.txt"));
+        Assert.NotSame(b, pane.Items.Single(row => row.Name == "b.txt"));
+        Assert.Equal(new[] { a }, pane.SelectedRows.ToArray());
+        // 全部を入れ替える通知は出さない
+        Assert.DoesNotContain(NotifyCollectionChangedAction.Reset, changes);
+        Assert.Equal(3, changes.Count); // b を外す・新しい b を入れる・c を入れる
+    }
+
+    [Fact]
+    public async Task Rows_that_appeared_or_changed_are_highlighted_for_a_while()
+    {
+        var time = new SteppingTime(DateTimeOffset.UnixEpoch);
+        var source = SourceWithFiles();
+        var pane = new FilePaneViewModel(PaneKind.Remote, time);
+        await pane.SetSourceAsync(source, cancellationToken: TestContext.Current.CancellationToken);
+        // 開いたばかりの一覧は光らせない
+        Assert.DoesNotContain(pane.Items, row => row.IsHighlighted);
+
+        // b.txt が変わり、c.txt が増えた（アップロードのあとの取り直し）
+        var entries = source.Folders["/data"];
+        entries[entries.FindIndex(entry => entry.Name == "b.txt")] = FakeFileSource.File("/data", "b.txt", 900);
+        entries.Add(FakeFileSource.File("/data", "c.txt", 10));
+        await pane.RefreshAsync();
+
+        Assert.Equal(new[] { "b.txt", "c.txt" }, pane.Items.Where(row => row.IsHighlighted).Select(row => row.Name).ToArray());
+
+        // 少したっても、まだ光っている
+        time.Advance(FilePaneViewModel.HighlightDuration / 2);
+        Assert.Equal(2, pane.Items.Count(row => row.IsHighlighted));
+
+        // 時間がたつと戻る（そのあとで行が画面に出てきても、もう光らない）
+        time.Advance(FilePaneViewModel.HighlightDuration);
+        await WaitForAsync(() => !pane.Items.Any(row => row.IsHighlighted));
+    }
+
+    [Fact]
+    public async Task Refreshing_without_changes_highlights_nothing()
+    {
+        var (pane, _) = await OpenAsync();
+
+        await pane.RefreshAsync();
+
+        Assert.DoesNotContain(pane.Items, row => row.IsHighlighted);
+    }
+
+    [Fact]
+    public async Task Opening_another_folder_highlights_nothing()
+    {
+        var (pane, _) = await OpenAsync();
+
+        await pane.OpenAsync(pane.Items.First(item => item.Name == "sub"));
+
+        Assert.Equal(new[] { "inner.txt" }, Names(pane));
+        Assert.DoesNotContain(pane.Items, row => row.IsHighlighted);
+    }
+
+    [Fact]
+    public async Task Files_that_arrive_in_an_empty_folder_are_highlighted()
+    {
+        var source = new FakeFileSource();
+        source.Folders["/data"] = [];
+        var pane = new FilePaneViewModel(PaneKind.Remote);
+        await pane.SetSourceAsync(source, cancellationToken: TestContext.Current.CancellationToken);
+
+        source.Folders["/data"].Add(FakeFileSource.File("/data", "new.txt", 1));
+        await pane.RefreshAsync();
+
+        Assert.True(Assert.Single(pane.Items).IsHighlighted);
     }
 
     [Fact]

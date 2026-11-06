@@ -32,6 +32,15 @@ internal sealed class FakeLoginServer
 
     public TransferFailure? ConnectFault { get; set; }
 
+    /// <summary>暗号化（FTPS）に対応していないサーバーのまね（FTPS で入ろうとすると断る）。</summary>
+    public bool RefusesEncryption { get; set; }
+
+    /// <summary>暗号化（FTPS）でないと入れないサーバーのまね（ロリポップ！など。暗号化なしの FTP を断る）。</summary>
+    public bool RequiresEncryption { get; set; }
+
+    /// <summary>接続しようとした方式の記録。</summary>
+    public List<ConnectionProtocol> ProtocolsTried { get; } = [];
+
     /// <summary>接続の前に待つ（遅いサーバーのまね）。</summary>
     public Func<ConnectionProfile, CancellationToken, Task>? Delay { get; set; }
 
@@ -70,8 +79,14 @@ internal sealed class FakeLoginServer
         {
             if (server.Delay is { } delay)
                 await delay(profile, cancellationToken);
+            lock (server.ProtocolsTried)
+                server.ProtocolsTried.Add(profile.Protocol);
             if (server.ConnectFault is { } fault)
                 throw new RemoteOperationException(fault);
+            if (server.RefusesEncryption && profile.Protocol is ConnectionProtocol.FtpsExplicit or ConnectionProtocol.FtpsImplicit)
+                throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.EncryptionNotSupported));
+            if (server.RequiresEncryption && profile.Protocol == ConnectionProtocol.Ftp)
+                throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.EncryptionRequired));
             if (!validateHostKey("ssh-ed25519", server.HostKeyFingerprint, 256))
                 throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.CertificateRejected));
             if (!string.IsNullOrEmpty(profile.PrivateKeyPath))

@@ -174,8 +174,9 @@ public sealed partial class MainWindow : Window
 
     /// <summary>
     /// 画面写真を撮って終わる。<paramref name="fromScreen"/> なら、ダイアログも写るように画面から撮る。
+    /// <paramref name="beforeCapture"/> は、描き終わってから撮る直前にすること（見本の一覧の取り直しなど）。
     /// </summary>
-    internal async Task CaptureAndExitAsync(string path, bool fromScreen)
+    internal async Task CaptureAndExitAsync(string path, bool fromScreen, Func<Task>? beforeCapture = null)
     {
         try
         {
@@ -184,6 +185,12 @@ public sealed partial class MainWindow : Window
             FitContent(_options.Width, _options.Height);
             // 一覧の行やフォントが描き終わるのを待つ
             await Task.Delay(TimeSpan.FromSeconds(3));
+            if (beforeCapture is not null)
+            {
+                // 増えた行が描かれ、光り始めて少したったところで撮る
+                await beforeCapture();
+                await Task.Delay(TimeSpan.FromMilliseconds(700));
+            }
             if (fromScreen)
                 await Screenshot.SaveWindowAsync(WinRT.Interop.WindowNative.GetWindowHandle(this), path);
             else

@@ -111,6 +111,63 @@ public sealed class MainViewModelConnectionTests : IDisposable
     }
 
     [Fact]
+    public async Task Auto_remembers_the_protocol_that_connected()
+    {
+        var profile = new ConnectionProfile { Name = "ブログ", Protocol = ConnectionProtocol.Auto, Host = "example.com", UserName = "web" };
+        _server.RefusesEncryption = true;
+        using var main = Create(profile);
+        var item = main.Connections.Items[0];
+
+        await main.ConnectAsync(item, password: "right");
+
+        Assert.True(main.IsConnected);
+        Assert.Equal(ConnectionProtocol.Ftp, item.Profile.Protocol);
+        Assert.Equal("FTP・暗号化なし", main.Connection.SecurityText);
+        Assert.Contains(main.Log.GetSnapshot().Entries, entry => entry.Message.Contains("「FTP（暗号化なし）」に決まりました", StringComparison.Ordinal));
+        var saved = Assert.Single(await ConnectionStore.LoadAsync(Path.Combine(_dataDirectory, "connections.json"), TestContext.Current.CancellationToken));
+        Assert.Equal(ConnectionProtocol.Ftp, saved.Protocol);
+        Assert.Equal(profile.Id, saved.Id);
+    }
+
+    [Fact]
+    public async Task A_server_that_needs_encryption_offers_one_click_ftps()
+    {
+        var profile = new ConnectionProfile { Name = "ロリポップ", Protocol = ConnectionProtocol.Ftp, Host = "example.com", UserName = "web" };
+        _server.RequiresEncryption = true;
+        using var main = Create(profile);
+        var item = main.Connections.Items[0];
+
+        await main.ConnectAsync(item, password: "right");
+
+        Assert.False(main.IsConnected);
+        Assert.Equal("このサーバーは暗号化（FTPS）でないと入れません", main.Remote.MessageReason);
+        Assert.Equal("方式を「FTPS（明示的）」にすると接続できます", main.Remote.MessageText);
+        Assert.Equal("FTPS（明示的）でつなぎ直す", main.Remote.RetryText);
+
+        await main.Remote.RetryCommand.ExecuteAsync(null);
+
+        Assert.True(main.IsConnected);
+        Assert.Equal(ConnectionProtocol.FtpsExplicit, item.Profile.Protocol);
+        Assert.Equal("FTPS・暗号化", main.Connection.SecurityText);
+        Assert.Equal(new[] { ConnectionProtocol.Ftp, ConnectionProtocol.FtpsExplicit }, _server.ProtocolsTried.ToArray());
+        var saved = Assert.Single(await ConnectionStore.LoadAsync(Path.Combine(_dataDirectory, "connections.json"), TestContext.Current.CancellationToken));
+        Assert.Equal(ConnectionProtocol.FtpsExplicit, saved.Protocol);
+    }
+
+    [Fact]
+    public async Task Other_failures_keep_the_plain_retry_button()
+    {
+        var profile = new ConnectionProfile { Name = "ショップ", Protocol = ConnectionProtocol.Ftp, Host = "example.com", UserName = "web" };
+        _server.ConnectFault = TransferFailure.Transient(FailureReason.Timeout);
+        using var main = Create(profile);
+
+        await main.ConnectAsync(main.Connections.Items[0], password: "right");
+
+        Assert.Equal("今すぐ再試行", main.Remote.RetryText);
+        Assert.Equal("", main.Remote.MessageText);
+    }
+
+    [Fact]
     public async Task Disconnecting_empties_the_server_side()
     {
         var profile = new ConnectionProfile { Name = "ショップ", Host = "example.com", UserName = "web" };

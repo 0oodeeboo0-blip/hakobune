@@ -155,6 +155,47 @@ public class ConnectionServiceTests
     }
 
     [Fact]
+    public async Task Auto_uses_encryption_when_the_server_has_it()
+    {
+        var (service, server, _, _, _) = Create();
+
+        var result = await service.ConnectAsync(Profile with { Protocol = ConnectionProtocol.Auto }, password: "right", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(ConnectionProtocol.FtpsExplicit, result.Profile.Protocol);
+        Assert.Equal(new[] { ConnectionProtocol.FtpsExplicit }, server.ProtocolsTried.ToArray());
+        await result.DisposeQuietlyAsync();
+    }
+
+    [Fact]
+    public async Task Auto_falls_back_to_plain_ftp_when_the_server_has_no_encryption()
+    {
+        var (service, server, _, _, _) = Create();
+        server.RefusesEncryption = true;
+
+        var result = await service.ConnectAsync(Profile with { Protocol = ConnectionProtocol.Auto }, password: "right", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.True(result.Succeeded);
+        Assert.Equal(ConnectionProtocol.Ftp, result.Profile.Protocol);
+        Assert.Equal(new[] { ConnectionProtocol.FtpsExplicit, ConnectionProtocol.Ftp }, server.ProtocolsTried.ToArray());
+        Assert.Equal(new[] { "right" }, server.PasswordsTried.ToArray());
+        await result.DisposeQuietlyAsync();
+    }
+
+    [Fact]
+    public async Task A_chosen_ftps_never_falls_back_to_plain_ftp()
+    {
+        var (service, server, _, _, _) = Create();
+        server.RefusesEncryption = true;
+
+        var result = await service.ConnectAsync(Profile with { Protocol = ConnectionProtocol.FtpsExplicit }, password: "right", cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal(FailureReason.EncryptionNotSupported, result.Failure?.Reason);
+        Assert.Equal(new[] { ConnectionProtocol.FtpsExplicit }, server.ProtocolsTried.ToArray());
+    }
+
+    [Fact]
     public void Certificates_trusted_by_windows_pass_without_asking()
     {
         var (service, _, prompts, _, _) = Create();

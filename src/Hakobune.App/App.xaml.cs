@@ -64,7 +64,12 @@ public partial class App : Application
                 CrashReport.WriteMessage(
                     $"アップロードが終わりませんでした: 全部 {viewModel.Transfers.TotalCount} 件、残り {viewModel.PendingTransferCount} 件、" +
                     $"失敗 {viewModel.Transfers.FailedCount} 件 {string.Join(" / ", viewModel.Transfers.Rows.Where(row => row.IsFailed).Select(row => row.FailureDetails))}");
-            await _window.CaptureAndExitAsync(path, fromScreen: Options.Dialog is not null);
+            // 取り直した場面は、光っているところを撮るので、撮る直前に取り直し、画面から撮る（動いている途中の色が写る）
+            var refreshed = Options.Demo == DemoScenario.Refreshed && Options.Dialog is null;
+            await _window.CaptureAndExitAsync(
+                path,
+                fromScreen: Options.Dialog is not null || refreshed,
+                beforeCapture: refreshed ? () => DemoData.ShowUploadedAsync(viewModel) : null);
         }
         catch (Exception ex)
         {

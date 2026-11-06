@@ -31,8 +31,10 @@ public class ConnectionEditorViewModelTests
     [InlineData("example.com", "2222", "web", "")]
     public void Mistakes_are_explained(string host, string port, string userName, string message)
     {
-        var editor = new ConnectionEditorViewModel { Host = host, PortText = port, UserName = userName };
+        // 1 番目は SFTP（ユーザー名が要る方式）
+        var editor = new ConnectionEditorViewModel { ProtocolIndex = 1, Host = host, PortText = port, UserName = userName };
 
+        Assert.Equal(ConnectionProtocol.Sftp, editor.Protocol);
         Assert.Equal(message, editor.ValidationMessage);
         Assert.Equal(message.Length == 0, editor.IsValid);
     }
@@ -52,10 +54,37 @@ public class ConnectionEditorViewModelTests
     }
 
     [Fact]
-    public void Anonymous_ftp_needs_no_user_name()
+    public void A_new_connection_starts_with_auto()
     {
-        var editor = new ConnectionEditorViewModel { ProtocolIndex = 3, Host = "ftp.example.com" };
+        var editor = new ConnectionEditorViewModel { Host = "ftp.example.com", UserName = "web" };
 
+        Assert.Equal(ConnectionProtocol.Auto, editor.Protocol);
+        Assert.True(editor.IsAuto);
+        Assert.True(editor.IsFtp);
+        Assert.False(editor.ShowsInsecureWarning);
+        Assert.Equal("21", editor.PortPlaceholder);
+        Assert.True(editor.IsValid);
+        Assert.Equal(ConnectionProtocol.Auto, editor.ToProfile().Protocol);
+    }
+
+    [Fact]
+    public void An_existing_connection_keeps_its_protocol()
+    {
+        var editor = new ConnectionEditorViewModel(new ConnectionProfile { Protocol = ConnectionProtocol.FtpsExplicit, Host = "example.com", UserName = "web" });
+
+        Assert.Equal(ConnectionProtocol.FtpsExplicit, editor.Protocol);
+        Assert.False(editor.IsAuto);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(4)]
+    public void Anonymous_ftp_needs_no_user_name(int protocolIndex)
+    {
+        // 0 番目は自動、4 番目は暗号化なしの FTP
+        var editor = new ConnectionEditorViewModel { ProtocolIndex = protocolIndex, Host = "ftp.example.com" };
+
+        Assert.True(editor.IsFtp);
         Assert.True(editor.IsValid);
         Assert.Equal("空欄なら anonymous（匿名）で入ります", editor.UserNamePlaceholder);
     }
@@ -117,10 +146,19 @@ public class ConnectionEditorViewModelTests
     public void Switching_protocols_changes_the_default_port_and_options()
     {
         var editor = new ConnectionEditorViewModel();
+        Assert.Equal("21", editor.PortPlaceholder);
+
+        editor.ProtocolIndex = 1;
+        editor.PrivateKeyPath = @"C:\keys\id_ed25519";
+
+        Assert.Equal(ConnectionProtocol.Sftp, editor.Protocol);
         Assert.Equal("22", editor.PortPlaceholder);
         Assert.True(editor.IsSftp);
+        Assert.False(editor.IsAuto);
+        Assert.Equal("", editor.UserNamePlaceholder);
+        Assert.Equal(@"C:\keys\id_ed25519", editor.ToProfile().PrivateKeyPath);
 
-        editor.ProtocolIndex = 2;
+        editor.ProtocolIndex = 3;
 
         Assert.Equal(ConnectionProtocol.FtpsImplicit, editor.Protocol);
         Assert.Equal("990", editor.PortPlaceholder);

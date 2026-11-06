@@ -15,6 +15,12 @@ public enum DemoScenario
 
     /// <summary>そのうえで、サーバーの一覧の更新に失敗し、前回の一覧を出している。</summary>
     Stale,
+
+    /// <summary>
+    /// アップロードのあと、サーバーの一覧を取り直したところ（増えた 2 つと変わった index.html が光る）。
+    /// 取り直しは画面が出てから <see cref="DemoData.ShowUploadedAsync"/> で行う。
+    /// </summary>
+    Refreshed,
 }
 
 /// <summary>
@@ -78,6 +84,24 @@ public static class DemoData
         status.ShowConnected(shop);
 
         return new MainViewModel(local, remote, transfers, connections, status, log: SampleLog());
+    }
+
+    /// <summary>
+    /// 見本の「アップロードのあと」: サーバー側に banner.jpg と campaign.html が増え、index.html が変わったことにして、
+    /// 一覧を取り直す（増えた・変わった行だけが、しばらく光る）。
+    /// </summary>
+    public static Task ShowUploadedAsync(MainViewModel viewModel)
+    {
+        ArgumentNullException.ThrowIfNull(viewModel);
+        if (viewModel.Remote.Source is not DemoFileSource source)
+            return Task.CompletedTask;
+        var entries = RemoteEntries(source);
+        entries[entries.FindIndex(entry => entry.Name == "index.html")] =
+            FileEntryAt(source, RemoteFolder, "index.html", 19_100, At(2026, 11, 6, 12, 36), File644);
+        entries.Add(FileEntryAt(source, RemoteFolder, "banner.jpg", 253_952, At(2026, 11, 6, 12, 36), File644));
+        entries.Add(FileEntryAt(source, RemoteFolder, "campaign.html", 6_200, At(2026, 11, 6, 12, 36), File644));
+        source.AddFolder(RemoteFolder, entries);
+        return viewModel.Remote.RefreshAsync();
     }
 
     // 下の「ログ」の見本（接続して 500 件を送っている途中）

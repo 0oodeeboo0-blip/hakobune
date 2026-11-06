@@ -14,6 +14,19 @@ public static class FtpReplyClassifier
         "maximum number of",
     ];
 
+    // 暗号化しないと入れないときの文言。
+    // 例: vsftpd「530 Non-anonymous sessions must use encryption.」、IIS「534 Policy requires SSL.」、
+    //     ProFTPD「550 SSL/TLS required on the control channel」、FileZilla Server「530 This server does not allow plain FTP. You have to use FTP over TLS.」、
+    //     Pure-FTPd「421 Sorry, cleartext sessions and weak ciphers are not accepted on this server.」
+    private static readonly string[] EncryptionRequiredHints =
+    [
+        "tls",
+        "ssl",
+        "encrypt",
+        "cleartext",
+        "plain ftp",
+    ];
+
     // 550 は「権限がない」と「見つからない」の両方に使われるので、文言で見分ける。
     private static readonly string[] NotFoundHints =
     [
@@ -56,6 +69,8 @@ public static class FtpReplyClassifier
     {
         if ((replyCode is 421 or 530) && ContainsAny(serverMessage, TooManyConnectionsHints))
             return FailureReason.TooManyConnections;
+        if (IsEncryptionRequired(replyCode, serverMessage))
+            return FailureReason.EncryptionRequired;
 
         return replyCode switch
         {
@@ -71,6 +86,16 @@ public static class FtpReplyClassifier
             _ => FailureReason.Unknown,
         };
     }
+
+    // 550 はファイル名が文言に入るので（「/var/www/ssl: Permission denied」など）、「必要」と言っているときだけにする
+    private static bool IsEncryptionRequired(int replyCode, string? serverMessage) => replyCode switch
+    {
+        421 or 530 or 534 => ContainsAny(serverMessage, EncryptionRequiredHints),
+        550 => ContainsAny(serverMessage, EncryptionRequiredHints) && ContainsAny(serverMessage, RequirementHints),
+        _ => false,
+    };
+
+    private static readonly string[] RequirementHints = ["required", "must"];
 
     private static bool ContainsAny(string? text, string[] hints)
     {

@@ -11,7 +11,8 @@ namespace Hakobune.App;
 /// <list type="bullet">
 /// <item><c>--connect URL</c>: 起動したら URL（例: sftp://user@example.com/var/www）に接続する（クイック接続。保存はしない）。</item>
 /// <item><c>--upload パス</c>: <c>--connect</c> で接続したら、そのファイルかフォルダをサーバーへ送る（CI で転送を確かめる）。</item>
-/// <item><c>--demo</c>: 見本のデータで画面を出す。<c>--scenario stale</c> で、一覧の更新に失敗した場面にする。</item>
+/// <item><c>--demo</c>: 見本のデータで画面を出す。<c>--scenario stale</c> で、一覧の更新に失敗した場面にする。
+/// <c>--scenario refreshed</c> で、アップロードのあとに一覧を取り直した場面にする（増えた・変わった行が光っているところを撮る）。</item>
 /// <item><c>--dialog 名前</c>: 見本のダイアログを出す（new、edit、quick、password、passphrase、hostkey、hostkey-changed、certificate、delete、
 /// rename、delete-files、permissions、conflict、stop、settings）。</item>
 /// <item><c>--theme light|dark</c>: ライト・ダークを決める（省くと Windows の設定に合わせる）。</item>
@@ -102,7 +103,12 @@ internal sealed record AppOptions
                 case "--scenario":
                     options = options with
                     {
-                        Demo = string.Equals(value, "stale", StringComparison.OrdinalIgnoreCase) ? DemoScenario.Stale : DemoScenario.Normal,
+                        Demo = value?.ToLowerInvariant() switch
+                        {
+                            "stale" => DemoScenario.Stale,
+                            "refreshed" => DemoScenario.Refreshed,
+                            _ => DemoScenario.Normal,
+                        },
                     };
                     i++;
                     break;

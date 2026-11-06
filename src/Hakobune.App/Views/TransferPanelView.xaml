@@ -234,6 +234,10 @@
                 ItemContainerStyle="{StaticResource TransferRowContainerStyle}"
                 ItemsSource="{x:Bind ViewModel.Rows, Mode=OneWay}"
                 SelectionMode="Extended">
+                <!--  行が増えたり移ったりしても、拡大・縮小の動きは付けない  -->
+                <ListView.ItemContainerTransitions>
+                    <TransitionCollection />
+                </ListView.ItemContainerTransitions>
                 <ListView.ItemTemplate>
                     <DataTemplate x:DataType="transfers:TransferRowViewModel">
                         <Grid Height="38">
@@ -489,6 +493,9 @@
                     ItemContainerStyle="{StaticResource LogRowContainerStyle}"
                     ItemsSource="{x:Bind Log.Rows, Mode=OneWay}"
                     SelectionMode="Extended">
+                    <ListView.ItemContainerTransitions>
+                        <TransitionCollection />
+                    </ListView.ItemContainerTransitions>
                     <ListView.KeyboardAccelerators>
                         <KeyboardAccelerator
                             Key="C"
