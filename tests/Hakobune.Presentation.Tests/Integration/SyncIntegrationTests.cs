@@ -51,6 +51,11 @@ public sealed class SyncIntegrationTests : IDisposable
         scheduler.Enqueue(requests);
         var result = await scheduler.RunAsync(cancellationToken);
         Assert.Equal(TransferRunOutcome.Finished, result.Outcome);
+        // 終わらなかったものは、何がなぜかを出す
+        var unfinished = scheduler.GetItems()
+            .Where(item => item.State != TransferState.Completed)
+            .Select(item => $"{item.RemotePath}: {item.State} {item.LastFailure?.Reason} {item.LastFailure?.ServerMessage} {item.Note}");
+        Assert.Equal(Array.Empty<string>(), unfinished.ToArray());
         Assert.Equal(requests.Count, result.Summary.Completed);
     }
 
@@ -79,6 +84,8 @@ public sealed class SyncIntegrationTests : IDisposable
         Write("css/site.css", "body { color: #333; }", hourAgo);
         Write("画像/商品 01.txt", "商品の説明", hourAgo);
         Write("old.txt", "old", DateTime.UtcNow.AddYears(-2));
+        Write("old-folder/a.txt", "a", hourAgo);
+        Write("old-folder/sub/b.txt", "b", hourAgo);
         Write("Thumbs.db", "thumbs", hourAgo);
         var site = Path.Combine(_root, "site");
         Directory.CreateDirectory(Path.Combine(site, "empty"));
@@ -93,7 +100,7 @@ public sealed class SyncIntegrationTests : IDisposable
         // はじめは、送らないファイルのほかは全部が新しい
         var plan = await PlanUploadAsync();
         Assert.Equal(
-            new[] { "New css/site.css", "New empty", "New index.html", "New old.txt", "New 画像/商品 01.txt" },
+            new[] { "New css/site.css", "New empty", "New index.html", "New old-folder/a.txt", "New old-folder/sub/b.txt", "New old.txt", "New 画像/商品 01.txt" },
             Describe(plan));
         Assert.Equal(1, plan.ExcludedCount);
         await RunAsync(server.Factory, SyncPlanner.ToRequests(plan, includeTargetNewer: false, deleteOnlyOnTarget: false), cancellationToken);
@@ -101,15 +108,16 @@ public sealed class SyncIntegrationTests : IDisposable
         // 送った直後に比べ直すと、何も送らない
         plan = await PlanUploadAsync();
         Assert.Equal(Array.Empty<string>(), Describe(plan));
-        Assert.Equal(4, plan.SameCount);
+        Assert.Equal(6, plan.SameCount);
         Assert.Empty(plan.UnreadableFolders);
 
-        // 直す・足す・消す
+        // 直す・足す・消す（フォルダも中身ごと消す）
         Write("index.html", "<h1>こんにちは、また</h1>", DateTime.UtcNow);
         Write("news.html", "お知らせ", DateTime.UtcNow);
         File.Delete(Path.Combine(site, "old.txt"));
+        Directory.Delete(Path.Combine(site, "old-folder"), recursive: true);
         plan = await PlanUploadAsync();
-        Assert.Equal(new[] { "Changed index.html", "New news.html", "OnlyOnTarget old.txt" }, Describe(plan));
+        Assert.Equal(new[] { "Changed index.html", "New news.html", "OnlyOnTarget old-folder", "OnlyOnTarget old.txt" }, Describe(plan));
         await RunAsync(server.Factory, SyncPlanner.ToRequests(plan, includeTargetNewer: false, deleteOnlyOnTarget: true), cancellationToken);
 
         plan = await PlanUploadAsync();

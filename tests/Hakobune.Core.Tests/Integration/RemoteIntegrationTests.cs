@@ -94,6 +94,10 @@ public class RemoteIntegrationTests
         await session.CreateDirectoryAsync(RemotePath.Combine(directory, "sub/深い/フォルダ"), cancellationToken);
         var nested = await session.ListAsync(RemotePath.Combine(directory, "sub/深い"), cancellationToken);
         Assert.Contains(nested, item => item.Name == "フォルダ" && item.IsDirectory);
+        // MLST の無いサーバーでも、フォルダがあるかは分かる
+        Assert.True(await session.DirectoryExistsAsync(RemotePath.Combine(directory, "sub/深い"), cancellationToken));
+        Assert.False(await session.DirectoryExistsAsync(RemotePath.Combine(directory, "無いフォルダ"), cancellationToken));
+        Assert.False(await session.DirectoryExistsAsync(RemotePath.Combine(directory, "big.bin"), cancellationToken));
 
         // 属性を変える
         await session.SetPermissionsAsync(RemotePath.Combine(directory, "big.bin"), Convert.ToInt32("600", 8), cancellationToken);

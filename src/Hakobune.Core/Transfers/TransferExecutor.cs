@@ -51,10 +51,12 @@ internal sealed class TransferExecutor(TransferOptions options)
         if (request.Direction != TransferDirection.Upload)
             throw new NotSupportedException("パソコン側を消す依頼には対応していません。");
         var existing = await session.GetItemAsync(request.RemotePath, cancellationToken).ConfigureAwait(false);
-        if (existing is null)
+        // MLST の無い FTP サーバーでは、フォルダは GetItemAsync で null になるので、別に調べる
+        var isDirectory = existing?.IsDirectory ?? await session.DirectoryExistsAsync(request.RemotePath, cancellationToken).ConfigureAwait(false);
+        if (existing is null && !isDirectory)
             return ExecutionResult.Skipped("もうありませんでした");
         sink.MarkTargetWritten(item);
-        if (existing.IsDirectory)
+        if (isDirectory)
         {
             await session.DeleteDirectoryAsync(request.RemotePath, cancellationToken).ConfigureAwait(false);
             sink.ForgetRemoteDirectory(request.RemotePath);
@@ -84,7 +86,8 @@ internal sealed class TransferExecutor(TransferOptions options)
         else
         {
             var remote = await session.GetItemAsync(request.RemotePath, cancellationToken).ConfigureAwait(false);
-            if (remote is not { IsDirectory: true })
+            var isDirectory = remote?.IsDirectory ?? await session.DirectoryExistsAsync(request.RemotePath, cancellationToken).ConfigureAwait(false);
+            if (!isDirectory)
                 throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.NotFound, request.RemotePath));
             if (File.Exists(request.LocalPath))
                 throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.NameConflictsWithFile, request.LocalPath));

@@ -119,6 +119,10 @@ public sealed class FtpRemoteSession : IRemoteSession
             return new RemoteItem(RemotePath.GetFileName(path), path, RemoteItemType.File, size, modified);
         }, cancellationToken);
 
+    // フォルダに移れるかで調べる（MLST の無いサーバーでも分かる。ほかの操作はフルパスで送るので、いまのフォルダが変わってもよい）
+    public Task<bool> DirectoryExistsAsync(string path, CancellationToken cancellationToken) =>
+        RunAsync(client => client.DirectoryExists(path, cancellationToken), cancellationToken);
+
     public Task CreateDirectoryAsync(string path, CancellationToken cancellationToken) =>
         RunAsync(client => client.CreateDirectory(path, force: true, cancellationToken), cancellationToken);
 

@@ -27,8 +27,15 @@ public interface IRemoteSession : IAsyncDisposable
     /// <summary>フォルダの中身を返す。</summary>
     Task<IReadOnlyList<RemoteItem>> ListAsync(string path, CancellationToken cancellationToken);
 
-    /// <summary>項目の情報を返す。無ければ null。</summary>
+    /// <summary>
+    /// 項目の情報を返す。無ければ null。MLST の無い FTP サーバー（vsftpd など）では、フォルダも null になる
+    /// （ファイルを速く調べるため。フォルダかどうかは <see cref="DirectoryExistsAsync"/> で調べる）。
+    /// </summary>
     Task<RemoteItem?> GetItemAsync(string path, CancellationToken cancellationToken);
+
+    /// <summary>フォルダがあるか。<see cref="GetItemAsync"/> でフォルダを見分けられないサーバーでも分かる。</summary>
+    async Task<bool> DirectoryExistsAsync(string path, CancellationToken cancellationToken) =>
+        await GetItemAsync(path, cancellationToken).ConfigureAwait(false) is { IsDirectory: true };
 
     /// <summary>フォルダを親フォルダごと作る。すでにあれば何もしない。</summary>
     Task CreateDirectoryAsync(string path, CancellationToken cancellationToken);
