@@ -39,6 +39,11 @@ public sealed record SftpConnectionSettings
 
     public TimeSpan OperationTimeout { get; init; } = TimeSpan.FromSeconds(60);
 
+    /// <summary>
+    /// 通信の詳細（接続したサーバーと暗号の種類、行った操作）を書く先。null なら書かない。どのスレッドから呼ばれてもよいものにする。
+    /// </summary>
+    public Action<string>? ProtocolLog { get; init; }
+
     // パスワードなどがログに出ないようにする。
     public override string ToString() =>
         $"{nameof(SftpConnectionSettings)} {{ Host = {Host}, Port = {Port}, UserName = {UserName} }}";

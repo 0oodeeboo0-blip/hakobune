@@ -53,6 +53,7 @@ public sealed class SftpRemoteSession : IRemoteSession
                 _hostKeyRejected = true;
         };
 
+        Trace($"Status:   {_settings.Host}:{_settings.Port} に {_settings.UserName} で接続します");
         try
         {
             await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
@@ -65,6 +66,7 @@ public sealed class SftpRemoteSession : IRemoteSession
                 throw new RemoteOperationException(
                     TransferFailure.Permanent(FailureReason.CertificateRejected, "サーバーの鍵を受け入れませんでした"), null, ex);
             }
+            Trace($"Error:    {ex.Message}");
             throw SftpErrors.Translate(ex);
         }
         catch
@@ -73,6 +75,9 @@ public sealed class SftpRemoteSession : IRemoteSession
             throw;
         }
         _client = client;
+        var info = client.ConnectionInfo;
+        Trace($"Status:   {info.ServerVersion} に接続しました（鍵交換 {info.CurrentKeyExchangeAlgorithm}、" +
+            $"暗号 {info.CurrentServerEncryption}、サーバーの鍵 {info.CurrentHostKeyAlgorithm}）");
     }
 
     public Task<string> GetHomeDirectoryAsync(CancellationToken cancellationToken) =>
@@ -81,6 +86,7 @@ public sealed class SftpRemoteSession : IRemoteSession
     public async Task<IReadOnlyList<RemoteItem>> ListAsync(string path, CancellationToken cancellationToken)
     {
         var client = RequireClient();
+        Trace($"Command:  ls {path}");
         try
         {
             var items = new List<RemoteItem>();
@@ -119,6 +125,7 @@ public sealed class SftpRemoteSession : IRemoteSession
     public async Task CreateDirectoryAsync(string path, CancellationToken cancellationToken)
     {
         var client = RequireClient();
+        Trace($"Command:  mkdir {path}");
         try
         {
             // SFTP には親フォルダごと作るコマンドが無いので、上から順に、無いものだけ作る。
@@ -150,6 +157,7 @@ public sealed class SftpRemoteSession : IRemoteSession
     {
         ArgumentNullException.ThrowIfNull(source);
         var client = RequireClient();
+        Trace(offset > 0 ? $"Command:  put {remotePath}（{offset} バイト目から）" : $"Command:  put {remotePath}");
         var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
         try
         {
@@ -190,6 +198,7 @@ public sealed class SftpRemoteSession : IRemoteSession
     {
         ArgumentNullException.ThrowIfNull(destination);
         var client = RequireClient();
+        Trace(offset > 0 ? $"Command:  get {remotePath}（{offset} バイト目から）" : $"Command:  get {remotePath}");
         var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
         try
         {
@@ -224,20 +233,32 @@ public sealed class SftpRemoteSession : IRemoteSession
         }
     }
 
-    public Task DeleteFileAsync(string path, CancellationToken cancellationToken) =>
-        RunAsync(client => client.DeleteFileAsync(path, cancellationToken), cancellationToken);
+    public Task DeleteFileAsync(string path, CancellationToken cancellationToken)
+    {
+        Trace($"Command:  rm {path}");
+        return RunAsync(client => client.DeleteFileAsync(path, cancellationToken), cancellationToken);
+    }
 
-    public Task RenameAsync(string fromPath, string toPath, CancellationToken cancellationToken) =>
-        RunAsync(client => client.RenameFileAsync(fromPath, toPath, cancellationToken), cancellationToken);
+    public Task RenameAsync(string fromPath, string toPath, CancellationToken cancellationToken)
+    {
+        Trace($"Command:  rename {fromPath} {toPath}");
+        return RunAsync(client => client.RenameFileAsync(fromPath, toPath, cancellationToken), cancellationToken);
+    }
 
     // SFTP では中身のあるフォルダは消せないので、下から順に消す
-    public Task DeleteDirectoryAsync(string path, CancellationToken cancellationToken) =>
-        RunAsync(client => DeleteTreeAsync(client, path, cancellationToken), cancellationToken);
+    public Task DeleteDirectoryAsync(string path, CancellationToken cancellationToken)
+    {
+        Trace($"Command:  rm -r {path}");
+        return RunAsync(client => DeleteTreeAsync(client, path, cancellationToken), cancellationToken);
+    }
 
-    public Task SetPermissionsAsync(string path, int mode, CancellationToken cancellationToken) =>
-        RunAsync(
+    public Task SetPermissionsAsync(string path, int mode, CancellationToken cancellationToken)
+    {
+        Trace($"Command:  chmod {UnixMode.Format(mode)} {path}");
+        return RunAsync(
             client => Task.Run(() => client.ChangePermissions(path, (short)UnixMode.ToOctalDigits(mode)), cancellationToken),
             cancellationToken);
+    }
 
     private static async Task DeleteTreeAsync(SftpClient client, string path, CancellationToken cancellationToken)
     {
@@ -384,6 +405,7 @@ public sealed class SftpRemoteSession : IRemoteSession
 
     private RemoteOperationException Fail(Exception exception)
     {
+        Trace($"Error:    {exception.Message}");
         var translated = SftpErrors.Translate(exception);
         if (translated.Failure.IsTransient || translated.Failure.Reason == FailureReason.Unknown)
             _broken = true;
@@ -392,6 +414,9 @@ public sealed class SftpRemoteSession : IRemoteSession
 
     private static bool IsOurCancellation(Exception exception, CancellationToken cancellationToken) =>
         exception is OperationCanceledException && cancellationToken.IsCancellationRequested;
+
+    // 通信の詳細（FTP の「Command:」「Response:」と同じ形にそろえる）
+    private void Trace(string line) => _settings.ProtocolLog?.Invoke(line);
 
     // 秘密鍵を読む。パスフレーズが要るとき、違うとき、ファイルが無いときは、それとわかる失敗にする。
     private static PrivateKeyFile LoadPrivateKey(string path, string? passphrase)

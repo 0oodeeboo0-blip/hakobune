@@ -76,6 +76,8 @@ public partial class App : Application
     // 起動のときの指定（--connect、--dialog）を始める。画面写真を撮ってよくなったら終わる Task を返す。
     private static Task Start(MainViewModel viewModel, DialogService dialogs)
     {
+        if (Options.ShowLog)
+            viewModel.ShowLogCommand.Execute(null);
         if (Options.Dialog is { } dialog)
         {
             // ダイアログは閉じるまで終わらないので待たない。出るまで少し待つ。

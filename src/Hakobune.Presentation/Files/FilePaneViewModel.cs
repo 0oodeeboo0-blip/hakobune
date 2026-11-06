@@ -1,6 +1,7 @@
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Hakobune.Core.Logging;
 using Hakobune.Core.Text;
 using Hakobune.Core.Transfers;
 
@@ -90,6 +91,12 @@ public sealed class FilePaneViewModel : ObservableObject
 
     /// <summary>行の高さを詰めるか（設定の「コンパクト」）。</summary>
     public bool UseCompactRows { get; set => SetProperty(ref field, value); }
+
+    /// <summary>一覧を取れなかったことを書くログ（null なら書かない）。</summary>
+    public ActivityLog? Log { get; set; }
+
+    /// <summary>ログに書く、どこのことか（サーバー側なら接続先の名前）。</summary>
+    public string? LogSource { get; set; }
 
     /// <summary>パソコン側か。</summary>
     public bool IsLocal => Kind == PaneKind.Local;
@@ -581,12 +588,15 @@ public sealed class FilePaneViewModel : ObservableObject
                 ScheduleAutoRetry(delay);
             }
             ShowMessage("一覧を更新できませんでした", DisplayText.Describe(failure), state);
+            Log?.Warning($"一覧を更新できませんでした（{requestedPath}）: {DisplayText.Describe(failure)}。{state}", LogSource);
             return;
         }
 
         // 別のフォルダを開けなかった。今のフォルダにとどまる。
         _failedPath = requestedPath;
-        ShowMessage(_hasLoaded ? "フォルダを開けませんでした" : "一覧を取得できませんでした", DisplayText.Describe(failure), "");
+        var title = _hasLoaded ? "フォルダを開けませんでした" : "一覧を取得できませんでした";
+        ShowMessage(title, DisplayText.Describe(failure), "");
+        Log?.Error($"{title}（{requestedPath}）: {DisplayText.Describe(failure)}", LogSource);
         OnViewStateChanged();
     }
 

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Hakobune.Core.Browsing;
 using Hakobune.Core.Connections;
+using Hakobune.Core.Logging;
 using Hakobune.Core.Remote;
 using Hakobune.Core.Remote.Ftp;
 using Hakobune.Core.Remote.Sftp;
@@ -147,12 +148,16 @@ public sealed class ConnectResult
     internal static ConnectResult Cancelled(ConnectionProfile profile) => new(profile, null, null, null, null, true);
 }
 
-/// <summary>接続先と秘密の情報から、接続を作るものを用意する（ふだんは <see cref="SessionFactories.Create"/>）。</summary>
+/// <summary>
+/// 接続先と秘密の情報から、接続を作るものを用意する（ふだんは <see cref="SessionFactories.Create"/>）。
+/// <paramref name="protocolLog"/> は通信の詳細を書く先（null なら書かない）。
+/// </summary>
 public delegate IRemoteSessionFactory SessionFactoryBuilder(
     ConnectionProfile profile,
     ConnectionCredentials credentials,
     HostKeyValidator validateHostKey,
-    CertificateValidator? validateCertificate);
+    CertificateValidator? validateCertificate,
+    Action<string>? protocolLog);
 
 /// <summary>
 /// 保存した接続先に接続する。パスワードは保管場所から読み、無ければ聞く。初めてのサーバーの鍵や証明書は、利用者に確かめてから信頼する。
@@ -172,7 +177,15 @@ public sealed class ConnectionService
     // 転送の接続がいっせいに確かめに来ても、利用者に聞くのは 1 回にする
     private readonly SemaphoreSlim _askGate = new(1, 1);
 
-    public ConnectionService(TrustStore trust, ISecretStore secrets, IConnectionPrompts prompts, SessionFactoryBuilder? createFactory = null)
+    private readonly ActivityLog? _log;
+
+    /// <summary><paramref name="log"/> を渡すと、通信の詳細（コマンドとサーバーの返事など）をそこへ書く。</summary>
+    public ConnectionService(
+        TrustStore trust,
+        ISecretStore secrets,
+        IConnectionPrompts prompts,
+        SessionFactoryBuilder? createFactory = null,
+        ActivityLog? log = null)
     {
         ArgumentNullException.ThrowIfNull(trust);
         ArgumentNullException.ThrowIfNull(secrets);
@@ -181,6 +194,7 @@ public sealed class ConnectionService
         _secrets = secrets;
         _prompts = prompts;
         _createFactory = createFactory ?? SessionFactories.Create;
+        _log = log;
     }
 
     /// <summary>
@@ -210,7 +224,8 @@ public sealed class ConnectionService
                 profile,
                 new ConnectionCredentials(password, passphrase),
                 CreateHostKeyValidator(profile, rejected),
-                CreateCertificateValidator(profile, rejected));
+                CreateCertificateValidator(profile, rejected),
+                ProtocolLogFor(profile));
             var browser = new RemoteBrowser(factory);
             string home;
             try
@@ -258,6 +273,15 @@ public sealed class ConnectionService
                 _passphrases[profile.Id] = passphrase;
             return ConnectResult.Connected(profile, factory, browser, home);
         }
+    }
+
+    // 通信の詳細は、どの接続先のことか分かるように接続先の名前を付けて書く
+    private Action<string>? ProtocolLogFor(ConnectionProfile profile)
+    {
+        if (_log is not { } log)
+            return null;
+        var source = profile.DisplayName;
+        return line => log.Detail(line, source);
     }
 
     /// <summary>SFTP のサーバーの鍵の確かめ方。信頼した鍵なら通し、そうでなければ利用者に聞く。</summary>

@@ -217,23 +217,43 @@
                         <TextBlock Text="更新" />
                     </StackPanel>
                 </Button>
-                <Button Style="{StaticResource ToolbarButtonStyle}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <FontIcon FontSize="16" Glyph="&#xE895;" />
-                        <TextBlock Text="同期" />
-                    </StackPanel>
-                </Button>
             </StackPanel>
             <StackPanel
                 Grid.Column="2"
                 Orientation="Horizontal"
                 Spacing="2">
-                <Button Style="{StaticResource ToolbarButtonStyle}">
+                <Button Style="{StaticResource ToolbarButtonStyle}" ToolTipService.ToolTip="表示の切り替え">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <FontIcon FontSize="16" Glyph="&#xE8FD;" />
                         <TextBlock Text="表示" />
                         <FontIcon FontSize="10" Glyph="&#xE70D;" />
                     </StackPanel>
+                    <Button.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedRight">
+                            <ToggleMenuFlyoutItem
+                                Command="{x:Bind ViewModel.ToggleHiddenFilesCommand}"
+                                IsChecked="{x:Bind ViewModel.Settings.ShowHiddenFiles, Mode=OneWay}"
+                                Text="隠しファイルを表示する" />
+                            <ToggleMenuFlyoutItem
+                                Command="{x:Bind ViewModel.ToggleCompactRowsCommand}"
+                                IsChecked="{x:Bind ViewModel.Settings.UseCompactRows, Mode=OneWay}"
+                                Text="一覧の行を詰める" />
+                            <MenuFlyoutSeparator />
+                            <ToggleMenuFlyoutItem IsChecked="{x:Bind ViewModel.IsSidebarOpen, Mode=TwoWay}" Text="接続先の一覧" />
+                            <ToggleMenuFlyoutItem IsChecked="{x:Bind ViewModel.Transfers.IsExpanded, Mode=TwoWay}" Text="転送の一覧" />
+                            <MenuFlyoutItem Command="{x:Bind ViewModel.ShowLogCommand}" Text="ログ">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE81C;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                            <MenuFlyoutSeparator />
+                            <MenuFlyoutItem Command="{x:Bind ViewModel.OpenSettingsCommand}" Text="設定…">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE713;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
+                        </MenuFlyout>
+                    </Button.Flyout>
                 </Button>
                 <Button
                     AutomationProperties.Name="その他の操作"

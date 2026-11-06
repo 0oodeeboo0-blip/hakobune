@@ -90,6 +90,19 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
     /// <summary>選んでいるタブに出す行。</summary>
     public ObservableList<TransferRowViewModel> Rows { get; } = [];
 
+    /// <summary>転送のタブではなく「ログ」を出しているか。</summary>
+    public bool IsLogSelected { get; private set => SetProperty(ref field, value); }
+
+    /// <summary>「ログ」を出す（たたんでいれば広げる）。転送のタブは、戻ったときのために覚えておく。</summary>
+    public void SelectLog()
+    {
+        IsExpanded = true;
+        if (IsLogSelected)
+            return;
+        SelectedTab.IsSelected = false;
+        IsLogSelected = true;
+    }
+
     /// <summary>一覧を広げているか。</summary>
     public bool IsExpanded
     {
@@ -289,6 +302,11 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
     public void SelectTab(TransferTab tab)
     {
         var selected = Tabs.First(item => item.Tab == tab);
+        if (IsLogSelected)
+        {
+            IsLogSelected = false;
+            SelectedTab.IsSelected = ReferenceEquals(selected, SelectedTab);
+        }
         if (ReferenceEquals(selected, SelectedTab))
             return;
         SelectedTab.IsSelected = false;

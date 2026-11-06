@@ -10,6 +10,14 @@ internal sealed class FixedTimeProvider(DateTimeOffset now) : TimeProvider
     public override DateTimeOffset GetUtcNow() => now.ToUniversalTime();
 }
 
+/// <summary>見本のログを書くときの時計（書く前に時刻を決める）。</summary>
+internal sealed class SettableTimeProvider : TimeProvider
+{
+    public DateTimeOffset Now { get; set; }
+
+    public override DateTimeOffset GetUtcNow() => Now.ToUniversalTime();
+}
+
 /// <summary>決まった中身を返す、見本の一覧。</summary>
 internal sealed class DemoFileSource : IFileSource
 {

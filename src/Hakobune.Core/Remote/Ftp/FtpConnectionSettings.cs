@@ -50,6 +50,12 @@ public sealed record FtpConnectionSettings
 
     public TimeSpan ReadTimeout { get; init; } = TimeSpan.FromSeconds(60);
 
+    /// <summary>
+    /// 通信の詳細（送ったコマンドとサーバーの返事）を書く先。null なら書かない。パスワードは「***」にして書く。
+    /// 転送の接続からも呼ばれるので、どのスレッドから呼ばれてもよいものにする。
+    /// </summary>
+    public Action<string>? ProtocolLog { get; init; }
+
     // パスワードがログなどに出ないようにする。
     public override string ToString() =>
         $"{nameof(FtpConnectionSettings)} {{ Host = {Host}, Port = {Port}, UserName = {UserName}, Security = {Security} }}";

@@ -1,7 +1,14 @@
+using System.Text;
+using Hakobune.Presentation.Logging;
 using Hakobune.Presentation.Transfers;
+using Microsoft.UI;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Windows.ApplicationModel.DataTransfer;
+using Windows.Storage.Pickers;
 
 namespace Hakobune.App.Views;
 
@@ -14,6 +21,14 @@ public sealed partial class TransferPanelView : UserControl
         typeof(TransferPanelView),
         new PropertyMetadata(null, OnViewModelChanged));
 
+    public static readonly DependencyProperty LogProperty = DependencyProperty.Register(
+        nameof(Log),
+        typeof(LogViewModel),
+        typeof(TransferPanelView),
+        new PropertyMetadata(null, OnLogChanged));
+
+    private ScrollViewer? _logScroller;
+
     public TransferPanelView()
     {
         InitializeComponent();
@@ -25,8 +40,117 @@ public sealed partial class TransferPanelView : UserControl
         set => SetValue(ViewModelProperty, value);
     }
 
+    /// <summary>下の「ログ」。</summary>
+    public LogViewModel? Log
+    {
+        get => (LogViewModel?)GetValue(LogProperty);
+        set => SetValue(LogProperty, value);
+    }
+
     private static void OnViewModelChanged(DependencyObject d, DependencyPropertyChangedEventArgs e) =>
         ((TransferPanelView)d).Bindings.Update();
+
+    private static void OnLogChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        var view = (TransferPanelView)d;
+        if (e.OldValue is LogViewModel oldLog)
+            oldLog.RowsAppended -= view.OnLogRowsAppended;
+        if (e.NewValue is LogViewModel newLog)
+            newLog.RowsAppended += view.OnLogRowsAppended;
+        view.Bindings.Update();
+    }
+
+    private void OnLogTabClick(object sender, RoutedEventArgs e)
+    {
+        ViewModel?.SelectLog();
+        ScrollLogToEnd();
+    }
+
+    // 新しい行が増えた。いちばん下を見ていたら、ついていく（上を見ているあいだは動かさない）
+    private void OnLogRowsAppended(object? sender, EventArgs e)
+    {
+        _logScroller ??= FindDescendant<ScrollViewer>(LogList);
+        if (_logScroller is { } scroller && scroller.VerticalOffset < scroller.ScrollableHeight - 8)
+            return;
+        ScrollLogToEnd();
+    }
+
+    private void ScrollLogToEnd() =>
+        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            if (Log is { Rows.Count: > 0 } log)
+                LogList.ScrollIntoView(log.Rows[^1]);
+        });
+
+    private static T? FindDescendant<T>(DependencyObject root)
+        where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T found)
+                return found;
+            if (FindDescendant<T>(child) is { } nested)
+                return nested;
+        }
+        return null;
+    }
+
+    // 選んだ行があればそれを、なければ出している行を全部
+    private string LogText()
+    {
+        if (Log is not { } log)
+            return "";
+        if (LogList.SelectedItems.Count == 0)
+            return log.ToText();
+        var text = new StringBuilder();
+        foreach (var row in LogList.SelectedItems.OfType<LogRowViewModel>().OrderBy(row => row.Entry.Sequence))
+            text.AppendLine(row.ToText());
+        return text.ToString();
+    }
+
+    private void OnCopyLogClick(object sender, RoutedEventArgs e) => CopyLog();
+
+    private void OnCopyLogInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        args.Handled = true;
+        CopyLog();
+    }
+
+    private void CopyLog()
+    {
+        var text = LogText();
+        if (text.Length == 0)
+            return;
+        var package = new DataPackage();
+        package.SetText(text);
+        Clipboard.SetContent(package);
+    }
+
+    private async void OnSaveLogClick(object sender, RoutedEventArgs e)
+    {
+        if (Log is not { } log || XamlRoot is null)
+            return;
+        try
+        {
+            var picker = new FileSavePicker
+            {
+                SuggestedStartLocation = PickerLocationId.DocumentsLibrary,
+                SuggestedFileName = $"hakobune-log-{DateTime.Now:yyyyMMdd-HHmm}",
+            };
+            picker.FileTypeChoices.Add("テキスト", [".txt"]);
+            var window = Win32Interop.GetWindowFromWindowId(XamlRoot.ContentIslandEnvironment.AppWindowId);
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, window);
+            if (await picker.PickSaveFileAsync() is not { } file)
+                return;
+            // メモ帳などで文字化けしないよう、BOM 付きの UTF-8 にする
+            await File.WriteAllTextAsync(file.Path, log.ToText(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Runtime.InteropServices.COMException)
+        {
+            CrashReport.Write(ex);
+        }
+    }
 
     private void OnTabClick(object sender, RoutedEventArgs e)
     {

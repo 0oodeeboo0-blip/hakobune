@@ -232,6 +232,7 @@ jobs:
             @{ Name = 'main-light'; Args = '--demo --theme light' },
             @{ Name = 'main-dark-stale'; Args = '--demo --scenario stale --theme dark' },
             @{ Name = 'main-light-stale'; Args = '--demo --scenario stale --theme light' },
+            @{ Name = 'main-log-dark'; Args = '--demo --log --theme dark' },
             @{ Name = 'dialog-new-connection'; Args = '--dialog new --theme light' },
             @{ Name = 'dialog-edit-dark'; Args = '--dialog edit --theme dark' },
             @{ Name = 'dialog-quick-connect'; Args = '--dialog quick --theme light' },

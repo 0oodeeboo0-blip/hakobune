@@ -1,3 +1,5 @@
+using Hakobune.Core.Logging;
+using Hakobune.Core.Remote;
 using Hakobune.Core.Transfers;
 using Hakobune.Presentation.Transfers;
 
@@ -68,6 +70,52 @@ public sealed class TransferControllerTests : IDisposable
         Assert.Equal(14, server.Files["/www/file4.txt"].Length);
         Assert.False(controller.IsPaused);
         Assert.Equal(0, controller.PendingCount);
+    }
+
+    [Fact]
+    public async Task Each_result_and_a_summary_are_written_to_the_log()
+    {
+        var server = new MemoryTransferServer
+        {
+            BeforeUpload = (path, _) => path.EndsWith("file1.txt", StringComparison.Ordinal)
+                ? throw new RemoteOperationException(new TransferFailure(FailureReason.PermissionDenied, FailureKind.Permanent, 550))
+                : Task.CompletedTask,
+        };
+        var log = new ActivityLog();
+        await using var controller = new TransferController(server, Fast, QueueFile, log: log, logSource: "ショップ");
+
+        controller.Enqueue(Uploads(3));
+        await WaitForAsync(() => controller.PendingCount == 0 && !controller.IsRunning);
+
+        var entries = log.GetSnapshot().Entries;
+        Assert.All(entries, entry => Assert.Equal("ショップ", entry.Source));
+        Assert.Contains(entries, entry => entry is { Kind: LogKind.Success, Message: "送りました: /www/file0.txt（10 バイト）" });
+        Assert.Contains(entries, entry => entry is { Kind: LogKind.Error, Message: "送れませんでした: /www/file1.txt: 権限がありません（550）" });
+        // 進み具合が変わっても、同じことは 1 回だけ書く
+        Assert.Single(entries, entry => entry.Message.StartsWith("送りました: /www/file2.txt", StringComparison.Ordinal));
+        var summary = entries[^1];
+        Assert.Equal(LogKind.Warning, summary.Kind);
+        Assert.Equal("転送が終わりました: 完了 2 件（22 バイト）、失敗 1 件", summary.Message);
+    }
+
+    [Fact]
+    public async Task Restored_failures_are_not_written_again()
+    {
+        var server = new MemoryTransferServer
+        {
+            BeforeUpload = (_, _) => throw new RemoteOperationException(TransferFailure.Permanent(FailureReason.PermissionDenied)),
+        };
+        await using (var first = new TransferController(server, Fast, QueueFile))
+        {
+            first.Enqueue(Uploads(1));
+            await WaitForAsync(() => first.PendingCount == 0 && !first.IsRunning);
+        }
+
+        var log = new ActivityLog();
+        await using var second = new TransferController(server, Fast, QueueFile, log: log);
+        await second.RestoreAsync(TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain(log.GetSnapshot().Entries, entry => entry.Kind == LogKind.Error);
     }
 
     [Fact]

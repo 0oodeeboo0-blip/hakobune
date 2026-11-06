@@ -25,12 +25,14 @@ public static class SessionFactories
 
     /// <summary>
     /// 接続を作るものを用意する。サーバーの鍵（SFTP）と証明書（FTPS）は、渡した確かめ方で確かめる。
+    /// <paramref name="protocolLog"/> を渡すと、通信の詳細（コマンドとサーバーの返事など）をそこへ書く。
     /// </summary>
     public static IRemoteSessionFactory Create(
         ConnectionProfile profile,
         ConnectionCredentials credentials,
         HostKeyValidator validateHostKey,
-        CertificateValidator? validateCertificate)
+        CertificateValidator? validateCertificate,
+        Action<string>? protocolLog = null)
     {
         ArgumentNullException.ThrowIfNull(profile);
         ArgumentNullException.ThrowIfNull(credentials);
@@ -50,6 +52,7 @@ public static class SessionFactories
                 PrivateKeyPassphrase = credentials.Passphrase,
                 ValidateHostKey = validateHostKey,
                 FileNameEncoding = encoding,
+                ProtocolLog = protocolLog,
             });
         }
 
@@ -70,6 +73,7 @@ public static class SessionFactories
             ValidateCertificate = validateCertificate,
             FileNameEncoding = encoding,
             UsePassiveMode = profile.UsePassiveMode,
+            ProtocolLog = protocolLog,
         });
     }
 

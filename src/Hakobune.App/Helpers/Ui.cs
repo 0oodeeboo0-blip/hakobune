@@ -1,5 +1,6 @@
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 
 namespace Hakobune.App.Helpers;
 
@@ -29,6 +30,18 @@ public static class Ui
 
     /// <summary>転送の一覧の見出しの下線（たたんだときは出さない）。</summary>
     public static Thickness BottomLine(bool isExpanded) => new(0, 0, 0, isExpanded ? 1 : 0);
+
+    /// <summary>当てはまるときは少し薄くする（ログの通信の詳細）。</summary>
+    public static double DimIf(bool value) => value ? 0.8 : 1.0;
+
+    /// <summary>ログの通信の詳細は、桁のそろう字体にする。</summary>
+    public static FontFamily LogFont(bool detail) =>
+        detail ? MonospaceFont : (FontFamily)Application.Current.Resources["ContentControlThemeFontFamily"];
+
+    /// <summary>ログの通信の詳細は、少し小さくする。</summary>
+    public static double LogFontSize(bool detail) => detail ? 12 : 14;
+
+    private static readonly FontFamily MonospaceFont = new("Cascadia Mono, Consolas");
 
     /// <summary>ファイルの一覧の行の形（設定の「コンパクト」なら低くする）。</summary>
     public static Style FileRowStyle(bool compact) =>

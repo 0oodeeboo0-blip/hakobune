@@ -236,6 +236,12 @@
                 <Setter Property="Padding" Value="0" />
             </Style>
 
+            <!-- ログの 1 行（転送の一覧より低く、たくさん見えるように） -->
+            <Style x:Key="LogRowContainerStyle" BasedOn="{StaticResource DefaultListViewItemStyle}" TargetType="ListViewItem">
+                <Setter Property="MinHeight" Value="26" />
+                <Setter Property="Padding" Value="14,0,10,0" />
+            </Style>
+
             <!--
                 コードで作るダイアログの部品。色は ThemeResource で決めるので、設定でライト・ダークを変えても、その画面の色になる
                 （Application.Current.Resources から直接取ると、Windows の色の方になってしまう）。

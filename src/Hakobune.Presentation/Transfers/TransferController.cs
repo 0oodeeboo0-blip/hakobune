@@ -1,4 +1,6 @@
+using Hakobune.Core.Logging;
 using Hakobune.Core.Remote;
+using Hakobune.Core.Text;
 using Hakobune.Core.Transfers;
 
 namespace Hakobune.Presentation.Transfers;
@@ -22,11 +24,21 @@ public sealed class TransferController : ITransferSource, IAsyncDisposable
     private bool _paused;
     private bool _disposed;
     private int _dirty;
+    private readonly ActivityLog? _log;
+    private readonly string? _logSource;
+    private readonly TransferLogWriter? _logWriter;
 
     /// <summary>
     /// <paramref name="queueFile"/> に送信待ちを保存する（null なら保存しない。クイック接続など）。
+    /// <paramref name="log"/> を渡すと、1 件ずつの結果をそこへ書く（<paramref name="logSource"/> は接続先の名前）。
     /// </summary>
-    public TransferController(IRemoteSessionFactory sessionFactory, TransferOptions? options = null, string? queueFile = null, TimeProvider? timeProvider = null)
+    public TransferController(
+        IRemoteSessionFactory sessionFactory,
+        TransferOptions? options = null,
+        string? queueFile = null,
+        TimeProvider? timeProvider = null,
+        ActivityLog? log = null,
+        string? logSource = null)
     {
         ArgumentNullException.ThrowIfNull(sessionFactory);
         var time = timeProvider ?? TimeProvider.System;
@@ -34,6 +46,15 @@ public sealed class TransferController : ITransferSource, IAsyncDisposable
         _queueFile = queueFile;
         _scheduler.ItemChanged += (_, _) => Interlocked.Exchange(ref _dirty, 1);
         _scheduler.ItemsRemoved += (_, _) => Interlocked.Exchange(ref _dirty, 1);
+        _log = log;
+        _logSource = logSource;
+        if (log is not null)
+        {
+            var writer = new TransferLogWriter(log, logSource, _scheduler.Options.RetryPolicy.MaxAttempts);
+            _scheduler.ItemChanged += (_, item) => writer.OnItemChanged(item);
+            _scheduler.ItemsRemoved += (_, ids) => writer.OnItemsRemoved(ids);
+            _logWriter = writer;
+        }
         // 転送のあいだも、ときどき保存しておく（アプリが落ちても送信待ちが残るように）
         _saveTimer = time.CreateTimer(_ => _ = SaveIfChangedAsync(), null, SaveInterval, SaveInterval);
     }
@@ -135,12 +156,23 @@ public sealed class TransferController : ITransferSource, IAsyncDisposable
         var kept = saved.Where(item => item.State is not (TransferState.Completed or TransferState.Skipped or TransferState.Cancelled)).ToList();
         if (kept.Count == 0)
             return;
-        _scheduler.Restore(kept);
+        if (_logWriter is not null)
+            _logWriter.IsRestoring = true;
+        try
+        {
+            _scheduler.Restore(kept);
+        }
+        finally
+        {
+            if (_logWriter is not null)
+                _logWriter.IsRestoring = false;
+        }
         RestoredPendingCount = _scheduler.GetSummary().Pending;
         if (RestoredPendingCount > 0)
         {
             lock (_gate)
                 _paused = true;
+            _log?.Info($"前回の残りが {RestoredPendingCount} 件あります（再開するまで止めておきます）", _logSource);
             StateChanged?.Invoke(this, EventArgs.Empty);
         }
     }
@@ -173,6 +205,7 @@ public sealed class TransferController : ITransferSource, IAsyncDisposable
             run = _run;
         }
         Cancel(run);
+        _log?.Info("転送を一時停止しました", _logSource);
         StateChanged?.Invoke(this, EventArgs.Empty);
         _ = SaveIfChangedAsync();
     }
@@ -180,10 +213,16 @@ public sealed class TransferController : ITransferSource, IAsyncDisposable
     /// <inheritdoc />
     public void Resume()
     {
+        bool wasPaused;
         lock (_gate)
+        {
+            wasPaused = _paused;
             _paused = false;
+        }
         StopReason = null;
         RestoredPendingCount = 0;
+        if (wasPaused)
+            _log?.Info("転送を再開しました", _logSource);
         StateChanged?.Invoke(this, EventArgs.Empty);
         EnsureRunning();
     }
@@ -268,8 +307,12 @@ public sealed class TransferController : ITransferSource, IAsyncDisposable
                     StopReason = result.PauseReason;
                     lock (_gate)
                         _paused = true;
+                    var reason = result.PauseReason is { } failure ? DisplayText.Describe(failure) : "接続できません";
+                    _log?.Error($"接続できないため、転送を止めました: {reason}", _logSource);
                     break;
                 }
+                if (result.Summary.Pending == 0)
+                    _logWriter?.OnAllDone();
                 if (result.Outcome == TransferRunOutcome.Cancelled || result.Summary.Pending == 0)
                     break;
             }

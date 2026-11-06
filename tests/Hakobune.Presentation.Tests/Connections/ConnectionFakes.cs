@@ -42,15 +42,25 @@ internal sealed class FakeLoginServer
 
     public List<string?> PasswordsTried { get; } = [];
 
-    public SessionFactoryBuilder Builder => (profile, credentials, validateHostKey, validateCertificate) =>
-        new Factory(this, profile, credentials, validateHostKey);
+    public SessionFactoryBuilder Builder => (profile, credentials, validateHostKey, validateCertificate, protocolLog) =>
+        new Factory(this, profile, credentials, validateHostKey, protocolLog);
 
-    private sealed class Factory(FakeLoginServer server, ConnectionProfile profile, ConnectionCredentials credentials, HostKeyValidator validateHostKey) : IRemoteSessionFactory
+    private sealed class Factory(
+        FakeLoginServer server,
+        ConnectionProfile profile,
+        ConnectionCredentials credentials,
+        HostKeyValidator validateHostKey,
+        Action<string>? protocolLog) : IRemoteSessionFactory
     {
-        public IRemoteSession Create() => new Session(server, profile, credentials, validateHostKey);
+        public IRemoteSession Create() => new Session(server, profile, credentials, validateHostKey, protocolLog);
     }
 
-    private sealed class Session(FakeLoginServer server, ConnectionProfile profile, ConnectionCredentials credentials, HostKeyValidator validateHostKey) : IRemoteSession
+    private sealed class Session(
+        FakeLoginServer server,
+        ConnectionProfile profile,
+        ConnectionCredentials credentials,
+        HostKeyValidator validateHostKey,
+        Action<string>? protocolLog) : IRemoteSession
     {
         public bool IsConnected { get; private set; }
 
@@ -79,6 +89,7 @@ internal sealed class FakeLoginServer
             }
             server.Logins++;
             IsConnected = true;
+            protocolLog?.Invoke($"Response: 230 {profile.UserName} がログインしました");
         }
 
         public Task<string> GetHomeDirectoryAsync(CancellationToken cancellationToken) => Task.FromResult(server.Home);

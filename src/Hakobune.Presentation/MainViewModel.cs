@@ -3,11 +3,13 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Hakobune.Core.Browsing;
 using Hakobune.Core.Connections;
+using Hakobune.Core.Logging;
 using Hakobune.Core.Remote;
 using Hakobune.Core.Text;
 using Hakobune.Core.Transfers;
 using Hakobune.Presentation.Connections;
 using Hakobune.Presentation.Files;
+using Hakobune.Presentation.Logging;
 using Hakobune.Presentation.Settings;
 using Hakobune.Presentation.Transfers;
 
@@ -78,7 +80,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         ConnectionStatusViewModel connection,
         AppServices? services = null,
         ConnectionService? connector = null,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        ActivityLog? log = null)
     {
         ArgumentNullException.ThrowIfNull(local);
         ArgumentNullException.ThrowIfNull(remote);
@@ -94,6 +97,10 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _connector = connector;
         _time = timeProvider ?? TimeProvider.System;
         _context = SynchronizationContext.Current;
+        Log = log ?? new ActivityLog(timeProvider: _time);
+        LogView = new LogViewModel(Log, _time, _context);
+        local.Log = Log;
+        remote.Log = Log;
         _activePane = local;
         local.IsActive = true;
         local.ActivationRequested += (_, _) => ActivePane = local;
@@ -119,6 +126,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         DeleteCommand = new AsyncRelayCommand(() => DeleteAsync(ActivePane), () => CanDelete(ActivePane));
         ChangePermissionsCommand = new AsyncRelayCommand(() => ChangePermissionsAsync(Remote), () => CanChangePermissions);
         OpenSettingsCommand = new AsyncRelayCommand(OpenSettingsAsync, () => _services?.SettingsDialogs is not null);
+        ShowLogCommand = new RelayCommand(Transfers.SelectLog);
+        ToggleHiddenFilesCommand = new AsyncRelayCommand(() => ApplySettingsAsync(Settings with { ShowHiddenFiles = !Settings.ShowHiddenFiles }));
+        ToggleCompactRowsCommand = new AsyncRelayCommand(() => ApplySettingsAsync(Settings with { UseCompactRows = !Settings.UseCompactRows }));
         local.PropertyChanged += OnPanePropertyChanged;
         remote.PropertyChanged += OnPanePropertyChanged;
         local.ActionRequested += OnPaneActionRequested;
@@ -236,6 +246,21 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>設定の画面を出す。</summary>
     public IAsyncRelayCommand OpenSettingsCommand { get; }
 
+    /// <summary>下の一覧で「ログ」を出す。</summary>
+    public IRelayCommand ShowLogCommand { get; }
+
+    /// <summary>パソコン側の隠しファイルを出す・出さない（設定にも残る）。</summary>
+    public IAsyncRelayCommand ToggleHiddenFilesCommand { get; }
+
+    /// <summary>一覧の行を詰める・詰めない（設定にも残る）。</summary>
+    public IAsyncRelayCommand ToggleCompactRowsCommand { get; }
+
+    /// <summary>アプリのログ（接続、転送、ファイルの操作、通信の詳細）。</summary>
+    public ActivityLog Log { get; }
+
+    /// <summary>下の「ログ」。</summary>
+    public LogViewModel LogView { get; }
+
     /// <summary>サーバー側で選んだものの属性を変えられるか。</summary>
     public bool CanChangePermissions => _session is not null && Remote.HasLoaded && Remote.SelectedRows.Count > 0 && _services?.FileDialogs is not null;
 
@@ -288,6 +313,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var local = new FilePaneViewModel(PaneKind.Local, time);
         var remote = new FilePaneViewModel(PaneKind.Remote, time);
         var transfers = new TransferListViewModel(EmptyTransferSource.Instance, time, SynchronizationContext.Current);
+        var log = new ActivityLog(timeProvider: time);
         var main = new MainViewModel(
             local,
             remote,
@@ -295,8 +321,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             new ConnectionListViewModel(profiles),
             new ConnectionStatusViewModel(),
             services,
-            new ConnectionService(trust, services.Secrets, services.Prompts),
-            time);
+            new ConnectionService(trust, services.Secrets, services.Prompts, log: log),
+            time,
+            log);
         if (loadFailure is not null)
         {
             main._saveBlocked = true;
@@ -330,6 +357,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             await Local.RefreshAsync().ConfigureAwait(true);
         }
         SaveSettings(window: null);
+    }
+
+    // ログに書く接続先（例: SFTP・example.com:22）
+    private static string DescribeTarget(ConnectionProfile profile)
+    {
+        var protocol = profile.Protocol switch
+        {
+            ConnectionProtocol.Sftp => "SFTP",
+            ConnectionProtocol.FtpsExplicit => "FTPS",
+            ConnectionProtocol.FtpsImplicit => "FTPS（暗黙）",
+            _ => "FTP",
+        };
+        return $"{protocol}・{profile.Host}:{profile.EffectivePort}";
     }
 
     // 設定の画面を出す。変えたものはその場で反映・保存されるので、閉じたら反映が終わるのを待つだけ
@@ -393,6 +433,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             Connection.ShowConnecting(item);
             await Remote.SetSourceAsync(null).ConfigureAwait(true); // 前の失敗の知らせを消す
             Remote.SetBusy($"{item.Name} に接続しています…");
+            Log.Info($"{item.Name} に接続しています（{DescribeTarget(item.Profile)}）", item.Name);
             password ??= _sessionPasswords.GetValueOrDefault(item.Profile.Id);
             try
             {
@@ -428,11 +469,13 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         if (result.IsCancelled)
         {
+            Log.Info("接続をやめました", item.Name);
             Connection.ShowDisconnected();
             return;
         }
         if (!result.Succeeded)
         {
+            Log.Error($"接続できませんでした: {DisplayText.Describe(result.Failure!)}", item.Name);
             Connection.ShowDisconnected();
             Remote.ShowNotice("接続できませんでした", DisplayText.Describe(result.Failure!), "", () => ConnectAsync(item, password));
             return;
@@ -443,6 +486,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         item.IsConnected = true;
         IsConnected = true;
         Connection.ShowConnected(item);
+        Log.Success($"接続しました（{Connection.SecurityText}）", item.Name);
+        Remote.LogSource = item.Name;
         var profile = item.Profile;
         await AttachTransfersAsync(result, item).ConfigureAwait(true);
         var start = profile.RemoteDirectory.Length > 0 ? profile.RemoteDirectory : result.HomeDirectory;
@@ -537,6 +582,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         await Remote.SetSourceAsync(null).ConfigureAwait(true);
         await session.DisposeQuietlyAsync().ConfigureAwait(true);
+        Log.Info("切断しました", connected?.Name);
         SessionChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -546,7 +592,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var profile = item.Profile;
         var options = new TransferOptions { MaxConcurrency = Math.Clamp(profile.MaxConcurrency, 1, 10) };
         var queueFile = item.IsTemporary || _services is null ? null : _services.QueueFile(profile.Id);
-        var controller = new TransferController(result.Factory!, options, queueFile, _time);
+        var controller = new TransferController(result.Factory!, options, queueFile, _time, Log, item.Name);
         await controller.RestoreAsync().ConfigureAwait(true);
         controller.ItemChanged += OnTransferItemChanged;
         _transferController = controller;
@@ -632,17 +678,24 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (!ReferenceEquals(controller, _transferController))
             return 0;
         if (plan.Requests.Count > 0)
+        {
             controller.Enqueue(plan.Requests);
+            var upload = plan.Requests[0].Direction == TransferDirection.Upload;
+            var size = plan.Requests.Sum(request => Math.Max(0, request.ExpectedBytes ?? 0));
+            Log.Info(
+                $"{(upload ? "アップロード" : "ダウンロード")}に {plan.Requests.Count} 件を加えました（{DisplayText.Size(size)}）",
+                _connected?.Name);
+        }
         if (plan.UnreadableFolders.Count > 0)
         {
-            from.ShowNotice(
-                "一部のフォルダは送りませんでした",
-                "中を見られないフォルダがあります",
-                string.Join("、", plan.UnreadableFolders.Take(3)) + (plan.UnreadableFolders.Count > 3 ? " ほか" : ""));
+            var folders = string.Join("、", plan.UnreadableFolders.Take(3)) + (plan.UnreadableFolders.Count > 3 ? " ほか" : "");
+            from.ShowNotice("一部のフォルダは送りませんでした", "中を見られないフォルダがあります", folders);
+            Log.Warning($"中を見られないフォルダは送りませんでした: {folders}", _connected?.Name);
         }
         else if (plan.TooMany)
         {
             from.ShowNotice("一部だけ送ります", $"一度に送れるのは {TransferPlanner.MaxFiles:N0} ファイルまでです");
+            Log.Warning($"一度に送れるのは {TransferPlanner.MaxFiles:N0} ファイルまでなので、一部だけ送ります", _connected?.Name);
         }
         return plan.Requests.Count;
     }
@@ -735,9 +788,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            pane.ShowNotice("フォルダを作れませんでした", DisplayText.Describe(FailureClassifier.FromException(ex)), name);
+            var reason = DisplayText.Describe(FailureClassifier.FromException(ex));
+            pane.ShowNotice("フォルダを作れませんでした", reason, name);
+            Log.Error($"フォルダを作れませんでした: {path}: {reason}", SourceOf(pane));
             return;
         }
+        Log.Info($"フォルダを作りました: {path}", SourceOf(pane));
         await pane.RefreshAsync(name).ConfigureAwait(true);
     }
 
@@ -771,9 +827,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            pane.ShowNotice("名前を変えられませんでした", DisplayText.Describe(FailureClassifier.FromException(ex)), oldName);
+            var reason = DisplayText.Describe(FailureClassifier.FromException(ex));
+            pane.ShowNotice("名前を変えられませんでした", reason, oldName);
+            Log.Error($"名前を変えられませんでした: {from}: {reason}", SourceOf(pane));
             return;
         }
+        Log.Info($"名前を変えました: {from} → {name}", SourceOf(pane));
         await pane.RefreshAsync(name).ConfigureAwait(true);
     }
 
@@ -793,31 +852,39 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             // 1 つ失敗しても、ほかは消す
             foreach (var row in rows)
             {
+                var path = row.Entry.FullPath;
                 try
                 {
-                    var path = row.Entry.FullPath;
                     if (row.Entry.Type == FileEntryType.Directory)
                         await OnServerAsync(browser => browser.DeleteDirectoryAsync(path, CancellationToken.None)).ConfigureAwait(true);
                     else
                         await OnServerAsync(browser => browser.DeleteFileAsync(path, CancellationToken.None)).ConfigureAwait(true);
+                    Log.Info($"削除しました: {path}", SourceOf(pane));
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     failed.Add(row.Name);
-                    firstFailure ??= FailureClassifier.FromException(ex);
+                    var failure = FailureClassifier.FromException(ex);
+                    firstFailure ??= failure;
+                    Log.Error($"削除できませんでした: {path}: {DisplayText.Describe(failure)}", SourceOf(pane));
                 }
             }
         }
         else
         {
+            var paths = rows.Select(row => row.Entry.FullPath).ToList();
             try
             {
-                await Task.Run(() => LocalFiles.Delete([.. rows.Select(row => row.Entry.FullPath)])).ConfigureAwait(true);
+                await Task.Run(() => LocalFiles.Delete(paths)).ConfigureAwait(true);
+                var where = LocalFiles.UsesRecycleBin ? "ごみ箱へ移しました" : "削除しました";
+                foreach (var path in paths)
+                    Log.Info($"{where}: {path}", SourceOf(pane));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 failed.AddRange(rows.Select(row => row.Name));
                 firstFailure = FailureClassifier.FromException(ex);
+                Log.Error($"削除できませんでした: {string.Join("、", paths)}: {DisplayText.Describe(firstFailure)}", SourceOf(pane));
             }
         }
 
@@ -844,21 +911,27 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var failed = new List<string>();
         foreach (var row in rows)
         {
+            var path = row.Entry.FullPath;
             try
             {
-                var path = row.Entry.FullPath;
                 await OnServerAsync(browser => browser.SetPermissionsAsync(path, mode, CancellationToken.None)).ConfigureAwait(true);
+                Log.Info($"属性を {UnixMode.Format(mode)} にしました: {path}", SourceOf(pane));
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 failed.Add(row.Name);
-                firstFailure ??= FailureClassifier.FromException(ex);
+                var failure = FailureClassifier.FromException(ex);
+                firstFailure ??= failure;
+                Log.Error($"属性を変えられませんでした: {path}: {DisplayText.Describe(failure)}", SourceOf(pane));
             }
         }
         await pane.RefreshAsync().ConfigureAwait(true);
         if (firstFailure is not null)
             pane.ShowNotice("属性を変えられませんでした", DisplayText.Describe(firstFailure), string.Join("、", failed.Take(3)));
     }
+
+    // ログに書く「どこのことか」（サーバー側なら接続先の名前、パソコン側は書かない）
+    private string? SourceOf(FilePaneViewModel pane) => pane.Kind == PaneKind.Remote ? _connected?.Name : null;
 
     // 送り終わったファイルが、開いているフォルダの中なら、一覧を取り直す（FFFTP のように一覧が消えたりはしない）
     private void OnTransferItemChanged(object? sender, TransferItemSnapshot snapshot)
@@ -1058,5 +1131,6 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         if (_session is { } session)
             _ = session.DisposeQuietlyAsync();
         Transfers.Dispose();
+        LogView.Dispose();
     }
 }

@@ -45,6 +45,15 @@ public sealed class FtpRemoteSession : IRemoteSession
         client.Encoding = _settings.FileNameEncoding ?? Encoding.UTF8;
         if (_settings.ValidateCertificate is { } validate)
             client.ValidateCertificate += (_, e) => e.Accept = validate(e.Certificate, e.Chain, e.PolicyErrors);
+        if (_settings.ProtocolLog is { } log)
+        {
+            // コマンド・返事・状態だけを書く（FluentFTP の中の呼び出しや、一覧の 1 行ずつは Verbose なので書かない）
+            client.LegacyLogger = (level, message) =>
+            {
+                if (level != FtpTraceLevel.Verbose && !string.IsNullOrWhiteSpace(message))
+                    log(message.TrimEnd());
+            };
+        }
 
         try
         {
@@ -266,6 +275,10 @@ public sealed class FtpRemoteSession : IRemoteSession
         // 接続の維持は Hakobune 側で行う。
         Noop = false,
         TimeConversion = FtpDate.ServerTime,
+        // 通信の詳細には、接続先とユーザー名は出す（利用者が自分で見るもの）。パスワードは出さない。
+        LogHost = true,
+        LogUserName = true,
+        LogPassword = false,
     };
 
     private static int ToMilliseconds(TimeSpan value) => (int)Math.Clamp(value.TotalMilliseconds, 1, int.MaxValue);

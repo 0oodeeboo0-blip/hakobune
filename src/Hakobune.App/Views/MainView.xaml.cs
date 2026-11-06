@@ -19,6 +19,7 @@ public sealed partial class MainView : UserControl
         LocalPane.ViewModel = viewModel.Local;
         RemotePane.ViewModel = viewModel.Remote;
         TransferPanel.ViewModel = viewModel.Transfers;
+        TransferPanel.Log = viewModel.LogView;
         TransferPanel.FilesDropped += OnTransferPanelFilesDropped;
     }
 

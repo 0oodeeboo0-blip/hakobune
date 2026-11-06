@@ -15,6 +15,7 @@ namespace Hakobune.App;
 /// <item><c>--dialog 名前</c>: 見本のダイアログを出す（new、edit、quick、password、passphrase、hostkey、hostkey-changed、certificate、delete、
 /// rename、delete-files、permissions、conflict、stop、settings）。</item>
 /// <item><c>--theme light|dark</c>: ライト・ダークを決める（省くと Windows の設定に合わせる）。</item>
+/// <item><c>--log</c>: 下の一覧で「ログ」を出しておく。</item>
 /// <item><c>--screenshot ファイル名</c>: 画面写真を PNG で保存して終わる。</item>
 /// <item><c>--size 幅x高さ</c>: ウインドウの中の大きさ（既定 1280x800）。</item>
 /// </list>
@@ -41,6 +42,9 @@ internal sealed record AppOptions
 
     /// <summary>画面写真の保存先。</summary>
     public string? ScreenshotPath { get; init; }
+
+    /// <summary>下の一覧で「ログ」を出しておく。</summary>
+    public bool ShowLog { get; init; }
 
     /// <summary>ウインドウの中の幅。</summary>
     public int Width { get; init; } = 1280;
@@ -113,6 +117,9 @@ internal sealed record AppOptions
                         },
                     };
                     i++;
+                    break;
+                case "--log":
+                    options = options with { ShowLog = true };
                     break;
                 case "--screenshot":
                     options = options with { ScreenshotPath = value };

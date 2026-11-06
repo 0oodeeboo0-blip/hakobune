@@ -1,4 +1,5 @@
 using Hakobune.Core.Connections;
+using Hakobune.Core.Logging;
 using Hakobune.Core.Transfers;
 using Hakobune.Presentation.Connections;
 using Hakobune.Presentation.Files;
@@ -76,7 +77,34 @@ public static class DemoData
         var status = new ConnectionStatusViewModel();
         status.ShowConnected(shop);
 
-        return new MainViewModel(local, remote, transfers, connections, status);
+        return new MainViewModel(local, remote, transfers, connections, status, log: SampleLog());
+    }
+
+    // 下の「ログ」の見本（接続して 500 件を送っている途中）
+    private static ActivityLog SampleLog()
+    {
+        var clock = new SettableTimeProvider();
+        var log = new ActivityLog(timeProvider: clock);
+        const string shop = "ショップ（本番）";
+        void Write(int minute, int second, LogKind kind, string message)
+        {
+            clock.Now = At(2026, 11, 6, 12, minute, second);
+            log.Add(kind, message, shop);
+        }
+
+        Write(31, 58, LogKind.Info, "ショップ（本番） に接続しています（SFTP・example.com:22）");
+        Write(31, 58, LogKind.Detail, "Status:   example.com:22 に web で接続します");
+        Write(31, 59, LogKind.Detail, "Status:   SSH-2.0-OpenSSH_9.6p1 に接続しました（鍵交換 curve25519-sha256、暗号 aes128-gcm@openssh.com、サーバーの鍵 ssh-ed25519）");
+        Write(31, 59, LogKind.Success, "接続しました（SFTP・暗号化）");
+        Write(32, 4, LogKind.Info, "アップロードに 500 件を加えました（1.2 GB）");
+        Write(32, 6, LogKind.Detail, "Command:  put /var/www/html/商品写真/coat-black-01.jpg");
+        Write(32, 7, LogKind.Success, "送りました: /var/www/html/商品写真/coat-black-01.jpg（412 KB）");
+        Write(35, 41, LogKind.Error, "送れませんでした: /var/www/html/admin/config.php: 権限がありません（550）");
+        Write(36, 2, LogKind.Error, "送れませんでした: /var/www/html/video/紹介動画.mp4: サーバーの容量が足りません（552）");
+        Write(36, 9, LogKind.Warning, "やり直します（2/5 回目の失敗）: /var/www/html/商品写真/scarf-red-05.jpg: 接続が切れました");
+        Write(36, 18, LogKind.Success, "送りました: /var/www/html/商品写真/winter-coat-03.jpg（388 KB）");
+        Write(36, 19, LogKind.Success, "送りました: /var/www/html/商品写真/winter-coat-04.jpg（405 KB）");
+        return log;
     }
 
     private static DateTimeOffset At(int year, int month, int day, int hour, int minute, int second = 0) =>
