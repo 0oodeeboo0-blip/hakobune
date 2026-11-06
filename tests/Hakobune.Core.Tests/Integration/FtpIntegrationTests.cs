@@ -1,0 +1,193 @@
+using System.Text;
+using Hakobune.Core.Remote;
+using Hakobune.Core.Remote.Ftp;
+using Hakobune.Core.Tests.Fakes;
+using Hakobune.Core.Transfers;
+
+namespace Hakobune.Core.Tests.Integration;
+
+/// <summary>
+/// 本物の FTP サーバー（vsftpd、Pure-FTPd、ProFTPD）を相手にしたテスト。
+/// CI では tests/servers/start.sh でサーバーを立ててから実行する。
+/// </summary>
+[Trait("Category", "Integration")]
+public class FtpIntegrationTests
+{
+    public static TheoryData<string> Servers => new() { "VSFTPD", "VSFTPD_FTPES", "PUREFTPD", "PROFTPD" };
+
+    [Theory]
+    [MemberData(nameof(Servers))]
+    public async Task Basic_operations_work_on_a_real_server(string server)
+    {
+        var settings = TestServers.Ftp(server);
+        if (settings is null)
+        {
+            Assert.Skip(TestServers.SkipReason(server));
+            return;
+        }
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        await using var session = new FtpRemoteSession(settings);
+        await session.ConnectAsync(cancellationToken);
+        var directory = await TestServers.CreateTestDirectoryAsync(session, cancellationToken);
+
+        var files = new Dictionary<string, byte[]>
+        {
+            ["a.txt"] = "hello"u8.ToArray(),
+            ["空白 と 日本語.txt"] = Encoding.UTF8.GetBytes("日本語の中身"),
+            ["empty.bin"] = [],
+            ["big.bin"] = TestServers.RandomBytes(1_000_000, seed: 1),
+        };
+        foreach (var (name, content) in files)
+        {
+            using var source = new MemoryStream(content);
+            await session.UploadAsync(source, RemotePath.Combine(directory, name), 0, null, cancellationToken);
+        }
+
+        var listing = await session.ListAsync(directory, cancellationToken);
+        foreach (var (name, content) in files)
+        {
+            var entry = Assert.Single(listing, item => item.Name == name);
+            Assert.Equal(RemoteItemType.File, entry.Type);
+            Assert.Equal(content.Length, entry.Size);
+        }
+
+        var big = await session.GetItemAsync(RemotePath.Combine(directory, "big.bin"), cancellationToken);
+        Assert.NotNull(big);
+        Assert.Equal(1_000_000, big.Size);
+        Assert.Null(await session.GetItemAsync(RemotePath.Combine(directory, "missing.txt"), cancellationToken));
+
+        foreach (var (name, content) in files)
+        {
+            using var destination = new MemoryStream();
+            await session.DownloadAsync(RemotePath.Combine(directory, name), destination, 0, null, cancellationToken);
+            Assert.Equal(content, destination.ToArray());
+        }
+
+        await session.RenameAsync(RemotePath.Combine(directory, "a.txt"), RemotePath.Combine(directory, "b.txt"), cancellationToken);
+        Assert.Null(await session.GetItemAsync(RemotePath.Combine(directory, "a.txt"), cancellationToken));
+        Assert.NotNull(await session.GetItemAsync(RemotePath.Combine(directory, "b.txt"), cancellationToken));
+        await session.DeleteFileAsync(RemotePath.Combine(directory, "b.txt"), cancellationToken);
+        Assert.Null(await session.GetItemAsync(RemotePath.Combine(directory, "b.txt"), cancellationToken));
+
+        await session.CreateDirectoryAsync(RemotePath.Combine(directory, "sub/深い/フォルダ"), cancellationToken);
+        var nested = await session.ListAsync(RemotePath.Combine(directory, "sub/深い"), cancellationToken);
+        Assert.Contains(nested, item => item.Name == "フォルダ" && item.IsDirectory);
+
+        await session.KeepAliveAsync(cancellationToken);
+    }
+
+    [Theory]
+    [MemberData(nameof(Servers))]
+    public async Task Uploads_and_downloads_can_continue_from_an_offset(string server)
+    {
+        var settings = TestServers.Ftp(server);
+        if (settings is null)
+        {
+            Assert.Skip(TestServers.SkipReason(server));
+            return;
+        }
+        var cancellationToken = TestContext.Current.CancellationToken;
+
+        await using var session = new FtpRemoteSession(settings);
+        await session.ConnectAsync(cancellationToken);
+        var directory = await TestServers.CreateTestDirectoryAsync(session, cancellationToken);
+        var path = RemotePath.Combine(directory, "resume.bin");
+        var content = TestServers.RandomBytes(300_000, seed: 2);
+
+        using (var first = new MemoryStream(content, 0, 100_000))
+            await session.UploadAsync(first, path, 0, null, cancellationToken);
+        using (var rest = new MemoryStream(content, 100_000, 200_000))
+            await session.UploadAsync(rest, path, 100_000, null, cancellationToken);
+
+        using var whole = new MemoryStream();
+        await session.DownloadAsync(path, whole, 0, null, cancellationToken);
+        Assert.Equal(content, whole.ToArray());
+
+        Assert.True(session.Capabilities.CanResumeDownload, "このサーバーは REST に対応しているはず");
+        using var tail = new MemoryStream();
+        await session.DownloadAsync(path, tail, 123_456, null, cancellationToken);
+        Assert.Equal(content[123_456..], tail.ToArray());
+    }
+
+    [Theory]
+    [MemberData(nameof(Servers))]
+    public async Task Every_file_arrives_even_when_the_connection_keeps_dropping(string server)
+    {
+        var settings = TestServers.Ftp(server);
+        if (settings is null)
+        {
+            Assert.Skip(TestServers.SkipReason(server));
+            return;
+        }
+        var cancellationToken = TestContext.Current.CancellationToken;
+        using var temp = new TempDirectory();
+
+        string directory;
+        await using (var setup = new FtpRemoteSession(settings))
+        {
+            await setup.ConnectAsync(cancellationToken);
+            directory = await TestServers.CreateTestDirectoryAsync(setup, cancellationToken);
+        }
+
+        var random = new Random(3);
+        var contents = new Dictionary<string, byte[]>();
+        var requests = new List<TransferRequest>();
+        for (var i = 0; i < 400; i++)
+        {
+            var content = TestServers.RandomBytes(random.Next(0, 64 * 1024), random);
+            var relative = $"d{i % 8}/{(i % 5 == 0 ? "日本語" : "file")}{i}.bin";
+            var local = temp.CreateFile(Path.Combine("up", relative), content);
+            var remote = RemotePath.Combine(directory, relative);
+            contents[remote] = content;
+            requests.Add(new TransferRequest(TransferDirection.Upload, local, remote));
+        }
+
+        var options = new TransferOptions
+        {
+            MaxConcurrency = 3,
+            RetryPolicy = new RetryPolicy(10, [TimeSpan.FromMilliseconds(100)], jitterRatio: 0),
+            ConnectPolicy = new RetryPolicy(10, [TimeSpan.FromMilliseconds(200)], jitterRatio: 0),
+        };
+
+        // 中継をはさみ、転送の途中で何度も接続を切る
+        await using var proxy = new FlakyTcpProxy(settings.Host, settings.Port);
+        var uploads = new TransferScheduler(new FtpSessionFactory(settings with { Host = "127.0.0.1", Port = proxy.Port }), options);
+        uploads.Enqueue(requests);
+        using var chaos = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var dropping = DropRepeatedlyAsync(proxy, TimeSpan.FromMilliseconds(250), times: 8, chaos.Token);
+
+        var uploaded = await uploads.RunAsync(cancellationToken);
+        await chaos.CancelAsync();
+        await dropping;
+
+        Assert.Equal(TransferRunOutcome.Finished, uploaded.Outcome);
+        Assert.Equal(400, uploaded.Summary.Completed);
+        Assert.True(proxy.DroppedConnections > 0, "テストの途中で接続を切れていません");
+
+        // 届いた中身を、ふつうの接続で全部ダウンロードして確かめる
+        string LocalCopy(string remote) => Path.Combine(temp.Path, "down", remote.TrimStart('/'));
+        var downloads = new TransferScheduler(new FtpSessionFactory(settings), options);
+        downloads.Enqueue(contents.Keys.Select(remote => new TransferRequest(TransferDirection.Download, LocalCopy(remote), remote)));
+        var downloaded = await downloads.RunAsync(cancellationToken);
+
+        Assert.Equal(400, downloaded.Summary.Completed);
+        foreach (var (remote, content) in contents)
+            Assert.Equal(content, File.ReadAllBytes(LocalCopy(remote)));
+    }
+
+    private static async Task DropRepeatedlyAsync(FlakyTcpProxy proxy, TimeSpan interval, int times, CancellationToken cancellationToken)
+    {
+        try
+        {
+            for (var i = 0; i < times; i++)
+            {
+                await Task.Delay(interval, cancellationToken);
+                proxy.DropAll();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+}

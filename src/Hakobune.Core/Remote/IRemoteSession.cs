@@ -21,6 +21,9 @@ public interface IRemoteSession : IAsyncDisposable
     /// <summary>接続してログインする。</summary>
     Task ConnectAsync(CancellationToken cancellationToken);
 
+    /// <summary>ログイン直後のフォルダ（ホーム）の絶対パス。</summary>
+    Task<string> GetHomeDirectoryAsync(CancellationToken cancellationToken);
+
     /// <summary>フォルダの中身を返す。</summary>
     Task<IReadOnlyList<RemoteItem>> ListAsync(string path, CancellationToken cancellationToken);
 

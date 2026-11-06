@@ -107,6 +107,12 @@ internal sealed class FakeRemoteSession(FakeServer server) : IRemoteSession
         return Task.CompletedTask;
     }
 
+    public Task<string> GetHomeDirectoryAsync(CancellationToken cancellationToken)
+    {
+        EnsureConnected();
+        return Task.FromResult("/");
+    }
+
     public Task<IReadOnlyList<RemoteItem>> ListAsync(string path, CancellationToken cancellationToken)
     {
         EnsureConnected();

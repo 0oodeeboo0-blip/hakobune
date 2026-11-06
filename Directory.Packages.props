@@ -3,6 +3,8 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
+    <!-- 通信 -->
+    <PackageVersion Include="FluentFTP" Version="55.1.0" />
     <!-- アプリ -->
     <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.6.5" />
     <!-- テスト -->

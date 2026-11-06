@@ -50,6 +50,12 @@ public enum FailureReason
     /// <summary>ログインできない。</summary>
     AuthenticationFailed,
 
+    /// <summary>サーバーの証明書を信頼できない（なりすましの恐れ）。</summary>
+    CertificateRejected,
+
+    /// <summary>暗号化した接続を確立できない（サーバーが FTPS に対応していないなど）。</summary>
+    SecureConnectionFailed,
+
     /// <summary>送った（受け取った）あとの照合で、大きさが合わなかった。</summary>
     VerificationFailed,
 
