@@ -1,33 +1,32 @@
 using System.Text;
 using Hakobune.Core.Remote;
-using Hakobune.Core.Remote.Ftp;
 using Hakobune.Core.Tests.Fakes;
 using Hakobune.Core.Transfers;
 
 namespace Hakobune.Core.Tests.Integration;
 
 /// <summary>
-/// 本物の FTP サーバー（vsftpd、Pure-FTPd、ProFTPD）を相手にしたテスト。
+/// 本物のサーバー（vsftpd、Pure-FTPd、ProFTPD、OpenSSH）を相手にしたテスト。
 /// CI では tests/servers/start.sh でサーバーを立ててから実行する。
 /// </summary>
 [Trait("Category", "Integration")]
-public class FtpIntegrationTests
+public class RemoteIntegrationTests
 {
-    public static TheoryData<string> Servers => new() { "VSFTPD", "VSFTPD_FTPES", "PUREFTPD", "PROFTPD" };
+    public static TheoryData<string> Servers => new() { "VSFTPD", "VSFTPD_FTPES", "PUREFTPD", "PROFTPD", "SFTP" };
 
     [Theory]
     [MemberData(nameof(Servers))]
-    public async Task Basic_operations_work_on_a_real_server(string server)
+    public async Task Basic_operations_work_on_a_real_server(string name)
     {
-        var settings = TestServers.Ftp(server);
-        if (settings is null)
+        var server = TestServers.Find(name);
+        if (server is null)
         {
-            Assert.Skip(TestServers.SkipReason(server));
+            Assert.Skip(TestServers.SkipReason(name));
             return;
         }
         var cancellationToken = TestContext.Current.CancellationToken;
 
-        await using var session = new FtpRemoteSession(settings);
+        await using var session = server.Factory.Create();
         await session.ConnectAsync(cancellationToken);
         var directory = await TestServers.CreateTestDirectoryAsync(session, cancellationToken);
 
@@ -38,16 +37,16 @@ public class FtpIntegrationTests
             ["empty.bin"] = [],
             ["big.bin"] = TestServers.RandomBytes(1_000_000, seed: 1),
         };
-        foreach (var (name, content) in files)
+        foreach (var (fileName, content) in files)
         {
             using var source = new MemoryStream(content);
-            await session.UploadAsync(source, RemotePath.Combine(directory, name), 0, null, cancellationToken);
+            await session.UploadAsync(source, RemotePath.Combine(directory, fileName), 0, null, cancellationToken);
         }
 
         var listing = await session.ListAsync(directory, cancellationToken);
-        foreach (var (name, content) in files)
+        foreach (var (fileName, content) in files)
         {
-            var entry = Assert.Single(listing, item => item.Name == name);
+            var entry = Assert.Single(listing, item => item.Name == fileName);
             Assert.Equal(RemoteItemType.File, entry.Type);
             Assert.Equal(content.Length, entry.Size);
         }
@@ -57,10 +56,10 @@ public class FtpIntegrationTests
         Assert.Equal(1_000_000, big.Size);
         Assert.Null(await session.GetItemAsync(RemotePath.Combine(directory, "missing.txt"), cancellationToken));
 
-        foreach (var (name, content) in files)
+        foreach (var (fileName, content) in files)
         {
             using var destination = new MemoryStream();
-            await session.DownloadAsync(RemotePath.Combine(directory, name), destination, 0, null, cancellationToken);
+            await session.DownloadAsync(RemotePath.Combine(directory, fileName), destination, 0, null, cancellationToken);
             Assert.Equal(content, destination.ToArray());
         }
 
@@ -79,17 +78,17 @@ public class FtpIntegrationTests
 
     [Theory]
     [MemberData(nameof(Servers))]
-    public async Task Uploads_and_downloads_can_continue_from_an_offset(string server)
+    public async Task Uploads_and_downloads_can_continue_from_an_offset(string name)
     {
-        var settings = TestServers.Ftp(server);
-        if (settings is null)
+        var server = TestServers.Find(name);
+        if (server is null)
         {
-            Assert.Skip(TestServers.SkipReason(server));
+            Assert.Skip(TestServers.SkipReason(name));
             return;
         }
         var cancellationToken = TestContext.Current.CancellationToken;
 
-        await using var session = new FtpRemoteSession(settings);
+        await using var session = server.Factory.Create();
         await session.ConnectAsync(cancellationToken);
         var directory = await TestServers.CreateTestDirectoryAsync(session, cancellationToken);
         var path = RemotePath.Combine(directory, "resume.bin");
@@ -104,7 +103,7 @@ public class FtpIntegrationTests
         await session.DownloadAsync(path, whole, 0, null, cancellationToken);
         Assert.Equal(content, whole.ToArray());
 
-        Assert.True(session.Capabilities.CanResumeDownload, "このサーバーは REST に対応しているはず");
+        Assert.True(session.Capabilities.CanResumeDownload, "このサーバーは途中からのダウンロードに対応しているはず");
         using var tail = new MemoryStream();
         await session.DownloadAsync(path, tail, 123_456, null, cancellationToken);
         Assert.Equal(content[123_456..], tail.ToArray());
@@ -112,19 +111,19 @@ public class FtpIntegrationTests
 
     [Theory]
     [MemberData(nameof(Servers))]
-    public async Task Every_file_arrives_even_when_the_connection_keeps_dropping(string server)
+    public async Task Every_file_arrives_even_when_the_connection_keeps_dropping(string name)
     {
-        var settings = TestServers.Ftp(server);
-        if (settings is null)
+        var server = TestServers.Find(name);
+        if (server is null)
         {
-            Assert.Skip(TestServers.SkipReason(server));
+            Assert.Skip(TestServers.SkipReason(name));
             return;
         }
         var cancellationToken = TestContext.Current.CancellationToken;
         using var temp = new TempDirectory();
 
         string directory;
-        await using (var setup = new FtpRemoteSession(settings))
+        await using (var setup = server.Factory.Create())
         {
             await setup.ConnectAsync(cancellationToken);
             directory = await TestServers.CreateTestDirectoryAsync(setup, cancellationToken);
@@ -151,8 +150,8 @@ public class FtpIntegrationTests
         };
 
         // 中継をはさみ、転送の途中で何度も接続を切る
-        await using var proxy = new FlakyTcpProxy(settings.Host, settings.Port);
-        var uploads = new TransferScheduler(new FtpSessionFactory(settings with { Host = "127.0.0.1", Port = proxy.Port }), options);
+        await using var proxy = new FlakyTcpProxy(server.Host, server.Port);
+        var uploads = new TransferScheduler(server.CreateFactory("127.0.0.1", proxy.Port), options);
         uploads.Enqueue(requests);
         using var chaos = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var dropping = DropRepeatedlyAsync(proxy, TimeSpan.FromMilliseconds(250), times: 8, chaos.Token);
@@ -167,7 +166,7 @@ public class FtpIntegrationTests
 
         // 届いた中身を、ふつうの接続で全部ダウンロードして確かめる
         string LocalCopy(string remote) => Path.Combine(temp.Path, "down", remote.TrimStart('/'));
-        var downloads = new TransferScheduler(new FtpSessionFactory(settings), options);
+        var downloads = new TransferScheduler(server.Factory, options);
         downloads.Enqueue(contents.Keys.Select(remote => new TransferRequest(TransferDirection.Download, LocalCopy(remote), remote)));
         var downloaded = await downloads.RunAsync(cancellationToken);
 

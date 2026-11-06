@@ -12,6 +12,7 @@
 
   <ItemGroup>
     <PackageReference Include="FluentFTP" />
+    <PackageReference Include="SSH.NET" />
   </ItemGroup>
 
 </Project>

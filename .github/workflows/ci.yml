@@ -52,12 +52,13 @@ jobs:
           HAKOBUNE_TEST_VSFTPD_FTPES: ftpes://hakobune:hakobune-pass@127.0.0.1:2121
           HAKOBUNE_TEST_PUREFTPD: ftp://hakobune:hakobune-pass@127.0.0.1:2122
           HAKOBUNE_TEST_PROFTPD: ftp://hakobune:hakobune-pass@127.0.0.1:2123
+          HAKOBUNE_TEST_SFTP: sftp://hakobune:hakobune-pass@127.0.0.1:2222
         run: dotnet run --project tests/Hakobune.Core.Tests/Hakobune.Core.Tests.csproj -c Release --no-build
 
       - name: サーバーのログ
         if: failure()
         run: |
-          for name in vsftpd pureftpd proftpd; do
+          for name in vsftpd pureftpd proftpd sshd; do
             echo "::group::$name"
             docker inspect -f 'status={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' "hakobune-$name" || true
             docker logs "hakobune-$name" 2>&1 | tail -n 100 || true

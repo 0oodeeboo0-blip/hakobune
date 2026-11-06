@@ -13,8 +13,24 @@
 ## ビルドと確認
 
 - Claude の作業環境からは nuget.org などに接続できず、手元でビルドできない。変更は push し、GitHub Actions（`.github/workflows/ci.yml`）の結果で確かめる。
-  - `gh run list --limit 5`、`gh run view <id> --log-failed`
-- アプリのビルド結果（zip）は Actions の成果物 `Hakobune-win-x64` からダウンロードできる。
+  - `gh run list --limit 5`、`gh run view <id> --log-failed`、`gh run view <id> --log`
+  - CI のジョブ: エンジンのテスト（Linux）、実サーバーでのテスト（Linux）、アプリのビルド（Windows。起動テストと画面写真つき）
+- Actions の成果物（artifact）は作業環境からはダウンロードできない（保存先がブロックされる）。
+  画面写真は CI が `screenshots` ブランチに置くので、git で取る:
+  `git fetch --depth 1 origin +refs/heads/screenshots:refs/remotes/origin/screenshots && git show origin/screenshots:startup.png > /tmp/startup.png`
+- アプリのビルド結果（zip）は、利用者が Actions の成果物 `Hakobune-win-x64` からダウンロードする。
+- ライブラリの API は、公開リポジトリを `git clone --depth 1` して読む（GitHub には git で接続できる）。例: FluentFTP、SSH.NET。
+
+## 実サーバーでのテスト
+
+- `tests/servers/` に、vsftpd・Pure-FTPd・ProFTPD・OpenSSH の Docker 定義がある。`start.sh` が全部をホストのネットワークで起動する。
+  - コンテナは `--init` で動かす（vsftpd は PID 1 だと落ちる）。Pure-FTPd は `--privileged` が要る。
+- テストは環境変数 `HAKOBUNE_TEST_<名前>`（例: `ftp://hakobune:hakobune-pass@127.0.0.1:2121`）があるときだけ動き、無ければ飛ばす。
+- `FlakyTcpProxy` で接続をわざと切り、転送が最後まで届くことを確かめている。
+
+## 注意
+
+- csproj などの XML のコメントに「--」を書かない（読み込みエラーになる）。
 
 ## 守ること
 

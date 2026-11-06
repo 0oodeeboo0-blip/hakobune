@@ -3,10 +3,11 @@
 #   vsftpd   127.0.0.1:2121（FTP と明示的 FTPS）
 #   Pure-FTPd 127.0.0.1:2122
 #   ProFTPD  127.0.0.1:2123
+#   OpenSSH  127.0.0.1:2222（SFTP）
 set -euo pipefail
 cd "$(dirname "$0")"
 
-for name in vsftpd pureftpd proftpd; do
+for name in vsftpd pureftpd proftpd sshd; do
   echo "::group::build $name"
   docker build -t "hakobune-test-$name" "$name"
   echo "::endgroup::"
@@ -36,6 +37,7 @@ status=0
 wait_for_port vsftpd 2121 || status=1
 wait_for_port pureftpd 2122 || status=1
 wait_for_port proftpd 2123 || status=1
+wait_for_port sshd 2222 || status=1
 
 # 待ち受けを確かめたあとも動き続けているか
 sleep 3
