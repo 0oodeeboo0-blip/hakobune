@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Hakobune.App.Helpers;
 using Hakobune.Presentation.Files;
+using Hakobune.Presentation.Settings;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -36,6 +37,54 @@ public sealed partial class FilePaneView : UserControl
         FileList.AddHandler(PointerReleasedEvent, new PointerEventHandler(OnListPointerReleased), handledEventsToo: true);
         FileList.AddHandler(PointerCaptureLostEvent, new PointerEventHandler(OnListPointerCaptureLost), handledEventsToo: true);
         FileList.AddHandler(PointerCanceledEvent, new PointerEventHandler(OnListPointerCanceled), handledEventsToo: true);
+
+        // 列の境目: 境目は列の左にあるので、左へ動かすと広がる
+        SizeGrip.Dragged += (_, delta) => ApplyColumns(_columns with { Size = _columns.Size - delta });
+        ModifiedGrip.Dragged += (_, delta) => ApplyColumns(_columns with { Modified = _columns.Modified - delta });
+        PermissionsGrip.Dragged += (_, delta) => ApplyColumns(_columns with { Permissions = _columns.Permissions - delta });
+        SizeGrip.ResetRequested += (_, _) => SaveColumns(_columns with { Size = new FileColumnWidths().Size });
+        ModifiedGrip.ResetRequested += (_, _) => SaveColumns(_columns with { Modified = new FileColumnWidths().Modified });
+        PermissionsGrip.ResetRequested += (_, _) => SaveColumns(_columns with { Permissions = new FileColumnWidths().Permissions });
+        foreach (var grip in new[] { SizeGrip, ModifiedGrip, PermissionsGrip })
+            grip.DragCompleted += (_, _) => SaveColumns(_columns);
+    }
+
+    private FileColumnWidths _columns = new();
+
+    // 列の幅を、見出しと、いま並んでいる行に当てる（動かしているあいだも、すぐ見えるように）
+    private void ApplyColumns(FileColumnWidths widths)
+    {
+        _columns = widths.Clamped();
+        SizeHeaderColumn.Width = new GridLength(_columns.Size);
+        ModifiedHeaderColumn.Width = new GridLength(_columns.Modified);
+        PermissionsHeader.Width = _columns.Permissions;
+        if (FileList.ItemsPanelRoot is not { } panel)
+            return;
+        foreach (var child in panel.Children)
+        {
+            if (child is ListViewItem { ContentTemplateRoot: Panel root })
+                ApplyRowColumns(root);
+        }
+    }
+
+    private void ApplyRowColumns(Panel root)
+    {
+        if (root.Children.Count < 2 || root.Children[1] is not Grid row || row.ColumnDefinitions.Count < 4)
+            return;
+        row.ColumnDefinitions[1].Width = new GridLength(_columns.Size);
+        row.ColumnDefinitions[2].Width = new GridLength(_columns.Modified);
+        foreach (var cell in row.Children)
+        {
+            if (cell is FrameworkElement element && Grid.GetColumn(element) == 3)
+                element.Width = _columns.Permissions;
+        }
+    }
+
+    // 動かし終わったら保存する（もう片方の一覧にも当たる）
+    private void SaveColumns(FileColumnWidths widths)
+    {
+        ApplyColumns(widths);
+        ViewModel?.ResizeColumns(_columns);
     }
 
     public FilePaneViewModel? ViewModel
@@ -53,12 +102,16 @@ public sealed partial class FilePaneView : UserControl
             newViewModel.PropertyChanged += view.OnViewModelPropertyChanged;
         view.Bindings.Update();
         view.ApplyFocusItem();
+        if (e.NewValue is FilePaneViewModel viewModel)
+            view.ApplyColumns(viewModel.Columns);
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(FilePaneViewModel.FocusItem))
             ApplyFocusItem();
+        else if (e.PropertyName == nameof(FilePaneViewModel.Columns) && ViewModel is { } viewModel)
+            ApplyColumns(viewModel.Columns);
     }
 
     // 上のフォルダに戻ったときなどに、元のフォルダを選んで見える位置に出す
@@ -82,6 +135,8 @@ public sealed partial class FilePaneView : UserControl
     {
         if (args.ItemContainer?.ContentTemplateRoot is not Panel root || root.Children.Count == 0 || root.Children[0] is not Border glow)
             return;
+        if (!args.InRecycleQueue)
+            ApplyRowColumns(root);
         RowGlow.Show(glow, !args.InRecycleQueue && args.Item is FileRowViewModel { IsHighlighted: true });
     }
 

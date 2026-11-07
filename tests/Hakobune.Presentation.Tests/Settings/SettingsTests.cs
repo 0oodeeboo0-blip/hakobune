@@ -55,6 +55,7 @@ public sealed class SettingsTests : IDisposable
             TransferListHeight = 320,
             Backups = new BackupSettings { IsEnabled = false, KeepDays = 90, MaxTotalMegabytes = 5120 },
             Notifications = new NotificationSettings { NotifyWhenTransfersEnd = false, ShowTaskbarProgress = false },
+            Columns = new FileColumnWidths { Size = 90, Modified = 140, Permissions = 70 },
         };
 
         Assert.True(AppSettings.TrySave(SettingsFile, saved));
@@ -315,6 +316,27 @@ public sealed class SettingsTests : IDisposable
         var expected = new NotificationSettings { NotifyWhenTransfersEnd = false, ShowTaskbarProgress = false };
         Assert.Equal(expected, main.Settings.Notifications);
         Assert.Equal(expected, (await AppSettings.LoadAsync(SettingsFile, TestContext.Current.CancellationToken)).Notifications);
+    }
+
+    [Fact]
+    public async Task Column_widths_are_shared_by_both_lists_and_saved()
+    {
+        using var main = await MainViewModel.CreateAsync(
+            Services(), settings: new AppSettings { LastLocalFolder = MakeFolder("site"), Columns = new FileColumnWidths { Size = 90, Modified = 2000 } });
+
+        Assert.Equal(90, main.Local.Columns.Size);
+        Assert.Equal(90, main.Remote.Columns.Size);
+        Assert.Equal(280, main.Remote.Columns.Modified); // 広すぎるものは直す
+
+        var resized = new List<FileColumnWidths>();
+        main.Remote.ColumnsResized += (_, widths) => resized.Add(widths);
+        main.Remote.ResizeColumns(new FileColumnWidths { Size = 500, Modified = 150.4, Permissions = 10 });
+
+        var expected = new FileColumnWidths { Size = 200, Modified = 150, Permissions = 60 };
+        Assert.Equal(expected, Assert.Single(resized));
+        Assert.Equal(expected, main.Local.Columns);
+        Assert.Equal(expected, main.Remote.Columns);
+        Assert.Equal(expected, (await AppSettings.LoadAsync(SettingsFile, TestContext.Current.CancellationToken)).Columns);
     }
 
     [Fact]

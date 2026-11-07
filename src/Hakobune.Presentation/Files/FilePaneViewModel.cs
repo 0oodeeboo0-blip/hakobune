@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using Hakobune.Core.Logging;
 using Hakobune.Core.Text;
 using Hakobune.Core.Transfers;
+using Hakobune.Presentation.Settings;
 
 namespace Hakobune.Presentation.Files;
 
@@ -117,6 +118,21 @@ public sealed class FilePaneViewModel : ObservableObject
 
     /// <summary>行の高さを詰めるか（設定の「コンパクト」）。</summary>
     public bool UseCompactRows { get; set => SetProperty(ref field, value); }
+
+    /// <summary>列の幅（設定から。画面が列の境目を動かすと <see cref="ColumnsResized"/> で知らせる）。</summary>
+    public FileColumnWidths Columns { get; set => SetProperty(ref field, value); } = new();
+
+    /// <summary>列の境目を動かし終わった（新しい幅）。保存して、もう片方の一覧にも当てる。</summary>
+    public event EventHandler<FileColumnWidths>? ColumnsResized;
+
+    /// <summary>画面が列の幅を変えた。</summary>
+    public void ResizeColumns(FileColumnWidths widths)
+    {
+        ArgumentNullException.ThrowIfNull(widths);
+        var clamped = widths.Clamped();
+        Columns = clamped;
+        ColumnsResized?.Invoke(this, clamped);
+    }
 
     /// <summary>一覧を取れなかったことを書くログ（null なら書かない）。</summary>
     public ActivityLog? Log { get; set; }

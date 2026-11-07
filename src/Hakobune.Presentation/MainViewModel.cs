@@ -160,6 +160,9 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         remote.PropertyChanged += OnPanePropertyChanged;
         local.ActionRequested += OnPaneActionRequested;
         remote.ActionRequested += OnPaneActionRequested;
+        // 列の幅は両方の一覧で同じにして、設定に残す
+        local.ColumnsResized += (_, widths) => _ = ApplySettingsAsync(Settings with { Columns = widths });
+        remote.ColumnsResized += (_, widths) => _ = ApplySettingsAsync(Settings with { Columns = widths });
         // ドラッグ＆ドロップ: パソコン側からサーバー側へ落とすとアップロード、その逆はダウンロード
         remote.RowsDropped += (_, e) => _ = UploadEntriesAsync([.. e.Rows.Select(row => row.Entry)]);
         remote.FilesDropped += (_, paths) => _ = UploadAsync(paths);
@@ -453,6 +456,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         transfers.IsExpanded = settings.IsTransferListExpanded;
         transfers.PanelHeight = settings.TransferListHeight;
         local.UseCompactRows = remote.UseCompactRows = settings.UseCompactRows;
+        local.Columns = remote.Columns = settings.Columns.Clamped();
         main.UpdateExclusions();
         var localSource = new LocalFileSource(time) { ShowHidden = settings.ShowHiddenFiles };
         var start = settings.LastLocalFolder is { Length: > 0 } last && Directory.Exists(last) ? last : null;
@@ -472,6 +476,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var backupsChanged = !Equals(settings.Backups, Settings.Backups);
         Settings = settings;
         Local.UseCompactRows = Remote.UseCompactRows = settings.UseCompactRows;
+        Local.Columns = Remote.Columns = settings.Columns.Clamped();
         if (!settings.Updates.CheckForUpdates)
             AvailableUpdate = null;
         if (exclusionsChanged)
