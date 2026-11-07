@@ -421,6 +421,9 @@ jobs:
               [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
               [DllImport("user32.dll")] private static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extra);
               [DllImport("user32.dll")] private static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+              [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hwnd);
+              [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
+              [DllImport("gdi32.dll")] private static extern bool BitBlt(IntPtr dest, int x, int y, int w, int h, IntPtr src, int sx, int sy, uint rop);
 
               public static POINT Origin(IntPtr hwnd) { var p = new POINT(); ClientToScreen(hwnd, ref p); return p; }
               public static void Activate(IntPtr hwnd) { SetForegroundWindow(hwnd); }
@@ -433,6 +436,13 @@ jobs:
               public static void LeftDown() { mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero); }
               public static void LeftUp() { mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero); }
               public static void Key(byte vk) { keybd_event(vk, 0, 0, UIntPtr.Zero); keybd_event(vk, 0, 2, UIntPtr.Zero); }
+              // 画面を写す。ドラッグ中の絵（別のウインドウ）も写るように CAPTUREBLT を付ける（System.Drawing では付けられない）
+              public static void CopyScreen(IntPtr dest, int x, int y, int w, int h)
+              {
+                  var screen = GetDC(IntPtr.Zero);
+                  try { BitBlt(dest, 0, 0, w, h, screen, x, y, 0x00CC0020 | 0x40000000); }
+                  finally { ReleaseDC(IntPtr.Zero, screen); }
+              }
           }
           '@
           Add-Type -AssemblyName System.Windows.Forms, System.Drawing
@@ -466,9 +476,9 @@ jobs:
           function Save-Window([string]$name) {
             $bmp = New-Object System.Drawing.Bitmap 1280, 800
             $g = [System.Drawing.Graphics]::FromImage($bmp)
-            # ドラッグ中の絵（別のウインドウ）も写るように CaptureBlt を付ける
-            $op = [System.Drawing.CopyPixelOperation]::SourceCopy -bor [System.Drawing.CopyPixelOperation]::CaptureBlt
-            $g.CopyFromScreen($origin.X, $origin.Y, 0, 0, $bmp.Size, $op)
+            $hdc = $g.GetHdc()
+            [Input]::CopyScreen($hdc, $origin.X, $origin.Y, 1280, 800)
+            $g.ReleaseHdc($hdc)
             $bmp.Save((Join-Path $PWD "screenshots\$name.png"), [System.Drawing.Imaging.ImageFormat]::Png)
             $g.Dispose()
             $bmp.Dispose()
