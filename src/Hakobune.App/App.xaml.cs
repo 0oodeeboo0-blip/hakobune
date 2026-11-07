@@ -91,14 +91,19 @@ public partial class App : Application
         if (Options.ShowBackups)
             viewModel.ShowBackupsCommand.Execute(null);
         if (Options.Dialog is { } dialog)
-        {
-            // ダイアログは閉じるまで終わらないので待たない。出るまで少し待つ。
-            _ = DemoDialogs.ShowAsync(dialog, dialogs, dialogs, dialogs, dialogs, dialogs, viewModel, dialogs, dialogs);
-            return Task.Delay(TimeSpan.FromSeconds(1));
-        }
+            return ShowDemoDialogAsync(dialog, viewModel, dialogs);
         if (Options.ConnectUrl is { } url)
             return ConnectAndUploadAsync(viewModel, url, Options.UploadPath);
         return Task.CompletedTask;
+    }
+
+    // 見本のダイアログを出す。閉じるまで終わらないので、出るまで少し待つ。出せなかったら記録する（CI で分かるように）
+    private static async Task ShowDemoDialogAsync(DemoDialog dialog, MainViewModel viewModel, DialogService dialogs)
+    {
+        var showing = DemoDialogs.ShowAsync(dialog, dialogs, dialogs, dialogs, dialogs, dialogs, viewModel, dialogs, dialogs);
+        await Task.WhenAny(showing, Task.Delay(TimeSpan.FromSeconds(1)));
+        if (showing.IsFaulted && showing.Exception is { } failure)
+            CrashReport.Write(failure.GetBaseException());
     }
 
     // 接続して、指定があれば送り、送り終わるまで待つ

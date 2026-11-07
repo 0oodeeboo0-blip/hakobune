@@ -459,9 +459,8 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
     }
 
     // 高すぎるときだけ縦に送れる入れ物。スクロールバーはダイアログの右の余白に出し、中身の幅は変えない
-    private static ScrollViewer Scrollable(UIElement content) => new()
+    private static ScrollViewer Scrollable() => new()
     {
-        Content = content,
         HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
         Padding = new Thickness(0, 0, 16, 0),
@@ -487,7 +486,13 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
             // ContentDialog は中身を縦に送らない作り（テンプレートの ContentScrollViewer が Disabled）なので、
             // 小さいウインドウや「詳しい設定」を開いたときに下が切れないよう、自分で送れるようにする
             if (dialog.Content is UIElement inner and not ScrollViewer)
-                dialog.Content = Scrollable(inner);
+            {
+                // 同じ部品は 2 か所に置けないので、ダイアログから外してから包む
+                var scroller = Scrollable();
+                dialog.Content = null;
+                scroller.Content = inner;
+                dialog.Content = scroller;
+            }
             // ダイアログは画面の外側に出るので、設定で選んだライト・ダークを受け継がない。画面に合わせ、出している間に変わっても追う。
             var content = root.Content as FrameworkElement;
             TypedEventHandler<FrameworkElement, object> follow = (sender, _) => dialog.RequestedTheme = sender.ActualTheme;
