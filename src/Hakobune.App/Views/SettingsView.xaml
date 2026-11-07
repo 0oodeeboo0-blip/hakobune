@@ -101,6 +101,67 @@
         <TextBlock
             Margin="0,16,0,4"
             Style="{StaticResource BodyStrongTextBlockStyle}"
+            Text="お知らせ" />
+
+        <Grid Style="{StaticResource SettingsCardStyle}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <FontIcon
+                VerticalAlignment="Center"
+                FontSize="16"
+                Glyph="&#xEA8F;" />
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock Text="転送が終わったら通知する" />
+                <TextBlock
+                    FontSize="12"
+                    Style="{StaticResource SecondaryTextStyle}"
+                    Text="Hakobune が前に出ていないときに、Windows の通知で知らせます。失敗があったときと、接続できずに止まったときも知らせます"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+            <ToggleSwitch
+                Grid.Column="2"
+                MinWidth="0"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="転送が終わったら通知する"
+                IsOn="{x:Bind ViewModel.NotifyWhenTransfersEnd, Mode=TwoWay}"
+                OffContent="オフ"
+                OnContent="オン" />
+        </Grid>
+
+        <Grid Style="{StaticResource SettingsCardStyle}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <FontIcon
+                VerticalAlignment="Center"
+                FontSize="16"
+                Glyph="&#xE7C4;" />
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock Text="タスクバーに進み具合を出す" />
+                <TextBlock
+                    FontSize="12"
+                    Style="{StaticResource SecondaryTextStyle}"
+                    Text="転送中は、タスクバーの Hakobune のボタンに進み具合を出します（一時停止中は黄、接続できずに止まったときは赤）"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+            <ToggleSwitch
+                Grid.Column="2"
+                MinWidth="0"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="タスクバーに進み具合を出す"
+                IsOn="{x:Bind ViewModel.ShowTaskbarProgress, Mode=TwoWay}"
+                OffContent="オフ"
+                OnContent="オン" />
+        </Grid>
+
+        <TextBlock
+            Margin="0,16,0,4"
+            Style="{StaticResource BodyStrongTextBlockStyle}"
             Text="控え（元に戻す）" />
 
         <Grid Style="{StaticResource SettingsCardStyle}">

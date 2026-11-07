@@ -54,6 +54,7 @@ public sealed class SettingsTests : IDisposable
             IsTransferListExpanded = false,
             TransferListHeight = 320,
             Backups = new BackupSettings { IsEnabled = false, KeepDays = 90, MaxTotalMegabytes = 5120 },
+            Notifications = new NotificationSettings { NotifyWhenTransfersEnd = false, ShowTaskbarProgress = false },
         };
 
         Assert.True(AppSettings.TrySave(SettingsFile, saved));
@@ -289,6 +290,27 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal(5120L << 20, backups.Limits.MaxTotalBytes);
         Assert.Equal(new BackupSettings { IsEnabled = false, KeepDays = 7, MaxTotalMegabytes = 5120 },
             (await AppSettings.LoadAsync(SettingsFile, TestContext.Current.CancellationToken)).Backups);
+    }
+
+    [Fact]
+    public async Task Notifications_and_taskbar_progress_are_on_by_default_and_can_be_turned_off()
+    {
+        SettingsViewModel? shown = null;
+        var dialogs = new ScriptedSettingsDialogs(settings => shown = settings);
+        using var main = await MainViewModel.CreateAsync(Services(dialogs), settings: new AppSettings { LastLocalFolder = MakeFolder("site") });
+
+        await main.OpenSettingsCommand.ExecuteAsync(null);
+        Assert.NotNull(shown);
+        Assert.True(shown.NotifyWhenTransfersEnd);
+        Assert.True(shown.ShowTaskbarProgress);
+
+        shown.NotifyWhenTransfersEnd = false;
+        shown.ShowTaskbarProgress = false;
+        await shown.Applying;
+
+        var expected = new NotificationSettings { NotifyWhenTransfersEnd = false, ShowTaskbarProgress = false };
+        Assert.Equal(expected, main.Settings.Notifications);
+        Assert.Equal(expected, (await AppSettings.LoadAsync(SettingsFile, TestContext.Current.CancellationToken)).Notifications);
     }
 
     [Fact]

@@ -29,12 +29,14 @@
     名前の変更、ファイルの削除、属性、同じ名前があるとき、転送中に閉じるとき、設定、設定の「送らないファイル」、
     同期の確認、控えから元に戻すとき。`dialog-sync-dark.png` は「これも送る」と「サーバーからも消す」を選んだところ）。
   - `connected.png`: Windows の上の FTP サーバー（pyftpdlib）に `--connect` で実際に接続し、`--upload` でフォルダを送り終えた画面。
-  - `marquee-drag.png`、`marquee-done.png`、`marquee-autoscroll.png`、`drag-file.png`: 本物のマウスの操作（CI が user32 で動かす）で、
-    一覧を囲んで選んでいる途中と終わり、端の外まで引いて流したところ、名前を掴んでファイルをドラッグしているところ（ウインドウの中身だけ）。
+  - `marquee-drag.png`、`marquee-done.png`、`marquee-autoscroll.png`、`marquee-autoscroll-done.png`、`drag-file.png`: 本物のマウスの操作（CI が user32 で動かす）で、
+    一覧を囲んで選んでいる途中と終わり、端の外まで引いて流したところと一覧の外で離したところ、名前を掴んでファイルをドラッグしているところ（ウインドウの中身だけ）。
+  - `notification.png`: 見本の通知（`--notify`）と、タスクバーのボタンの進み具合（見本は 76%）を、画面全体で撮ったもの。
   - アプリが画面写真を撮れなかったときは、同じ名前の `.error.txt` もブランチに置かれる。
 - 見本の画面は `Hakobune.exe --demo [--scenario stale|refreshed] [--theme light|dark] [--log] [--backups] [--screenshot ファイル名] [--size 1280x800]` で出せる。
   `--scenario refreshed` は、撮る直前にサーバーの一覧を取り直す（2 つ増え、index.html が変わる）。
   `--log` で、下の一覧の「ログ」を出しておく。`--backups` で「控え」を出しておく（見本の控えは一時フォルダに作る）。
+  `--notify` で、見本の通知（転送が終わりました）を出す。
   `--screenshot` を付けると、アプリ自身が画面写真（RenderTargetBitmap）を保存して終わる。
   `--dialog new|edit|quick|password|passphrase|hostkey|hostkey-changed|certificate|delete|rename|delete-files|permissions|conflict|stop|settings|settings-exclusions|sync|sync-delete|restore`
   で見本のダイアログを出す（写真は画面から撮る）。

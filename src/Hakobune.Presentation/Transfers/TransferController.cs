@@ -26,7 +26,7 @@ public sealed class TransferController : ITransferSource, IAsyncDisposable
     private int _dirty;
     private readonly ActivityLog? _log;
     private readonly string? _logSource;
-    private readonly TransferLogWriter? _logWriter;
+    private readonly TransferLogWriter _logWriter;
 
     /// <summary>
     /// <paramref name="queueFile"/> に送信待ちを保存する（null なら保存しない。クイック接続など）。
@@ -48,13 +48,11 @@ public sealed class TransferController : ITransferSource, IAsyncDisposable
         _scheduler.ItemsRemoved += (_, _) => Interlocked.Exchange(ref _dirty, 1);
         _log = log;
         _logSource = logSource;
-        if (log is not null)
-        {
-            var writer = new TransferLogWriter(log, logSource, _scheduler.Options.RetryPolicy.MaxAttempts);
-            _scheduler.ItemChanged += (_, item) => writer.OnItemChanged(item);
-            _scheduler.ItemsRemoved += (_, ids) => writer.OnItemsRemoved(ids);
-            _logWriter = writer;
-        }
+        // ログが無くても、ひと区切りまでに終わった数は数える（RunEnded で知らせる）
+        var writer = new TransferLogWriter(log, logSource, _scheduler.Options.RetryPolicy.MaxAttempts);
+        _scheduler.ItemChanged += (_, item) => writer.OnItemChanged(item);
+        _scheduler.ItemsRemoved += (_, ids) => writer.OnItemsRemoved(ids);
+        _logWriter = writer;
         // 転送のあいだも、ときどき保存しておく（アプリが落ちても送信待ちが残るように）
         _saveTimer = time.CreateTimer(_ => _ = SaveIfChangedAsync(), null, SaveInterval, SaveInterval);
     }
@@ -75,6 +73,12 @@ public sealed class TransferController : ITransferSource, IAsyncDisposable
 
     /// <inheritdoc />
     public event EventHandler? StateChanged;
+
+    /// <summary>
+    /// 転送がひと区切りついた（送るものが無くなった、または接続できずに止めた）。前の区切りから後に終わった数を渡す。
+    /// 利用者が一時停止したときは呼ばない。転送のスレッドから呼ばれる。
+    /// </summary>
+    public event EventHandler<TransferRunEnded>? RunEnded;
 
     /// <summary>項目の状態が変わったときにも呼ばれる、送信待ちそのもの（試験用）。</summary>
     internal TransferScheduler Scheduler => _scheduler;
@@ -156,16 +160,14 @@ public sealed class TransferController : ITransferSource, IAsyncDisposable
         var kept = saved.Where(item => item.State is not (TransferState.Completed or TransferState.Skipped or TransferState.Cancelled)).ToList();
         if (kept.Count == 0)
             return;
-        if (_logWriter is not null)
-            _logWriter.IsRestoring = true;
+        _logWriter.IsRestoring = true;
         try
         {
             _scheduler.Restore(kept);
         }
         finally
         {
-            if (_logWriter is not null)
-                _logWriter.IsRestoring = false;
+            _logWriter.IsRestoring = false;
         }
         RestoredPendingCount = _scheduler.GetSummary().Pending;
         if (RestoredPendingCount > 0)
@@ -309,10 +311,11 @@ public sealed class TransferController : ITransferSource, IAsyncDisposable
                         _paused = true;
                     var reason = result.PauseReason is { } failure ? DisplayText.Describe(failure) : "接続できません";
                     _log?.Error($"接続できないため、転送を止めました: {reason}", _logSource);
+                    RaiseRunEnded(new TransferRunEnded(_logWriter.TakeTotals(), Stopped: true, result.PauseReason));
                     break;
                 }
-                if (result.Summary.Pending == 0)
-                    _logWriter?.OnAllDone();
+                if (result.Summary.Pending == 0 && _logWriter.OnAllDone() is { } totals)
+                    RaiseRunEnded(new TransferRunEnded(totals, Stopped: false));
                 if (result.Outcome == TransferRunOutcome.Cancelled || result.Summary.Pending == 0)
                     break;
             }
@@ -331,6 +334,19 @@ public sealed class TransferController : ITransferSource, IAsyncDisposable
 
         // 終わりかけたときに加わった項目を取りこぼさない
         EnsureRunning();
+    }
+
+    // 受け取った側の失敗で、転送を止めない
+    private void RaiseRunEnded(TransferRunEnded ended)
+    {
+        try
+        {
+            RunEnded?.Invoke(this, ended);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _log?.Warning($"転送の終わりを知らせられませんでした: {ex.Message}", _logSource);
+        }
     }
 
     private static void Cancel(CancellationTokenSource? run)

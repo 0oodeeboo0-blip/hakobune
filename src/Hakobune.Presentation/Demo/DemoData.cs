@@ -43,6 +43,10 @@ public static class DemoData
     /// <summary>見本の接続先（ショップ（本番））の ID。控えの見本に使う。</summary>
     public static Guid ConnectionId { get; } = new("6d2f4c1e-3b7a-4f0e-9c55-2a1b8e7d9f01");
 
+    /// <summary>見本の通知に使う、転送のひと区切り（12 件・3.3 MB を送り終えた）。</summary>
+    public static TransferRunEnded SampleRunEnded { get; } =
+        new(new TransferTotals(Uploaded: 12, Downloaded: 0, Deleted: 0, Folders: 1, Failed: 0, UploadedBytes: 3_456_789, DownloadedBytes: 0), Stopped: false);
+
     /// <summary>見本の画面を作る。</summary>
     public static async Task<MainViewModel> CreateAsync(DemoScenario scenario, SynchronizationContext? context = null)
     {

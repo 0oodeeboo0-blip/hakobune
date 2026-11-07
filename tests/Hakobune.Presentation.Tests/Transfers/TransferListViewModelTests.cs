@@ -266,6 +266,30 @@ public class TransferListViewModelTests
     }
 
     [Fact]
+    public void The_taskbar_shows_sending_paused_and_stopped_and_nothing_when_done()
+    {
+        var (list, source, _) = Create();
+        Assert.Equal(TransferProgressKind.None, list.ProgressKind);
+
+        var running = source.Add("index.html", TransferState.Running);
+        source.Add("about.html", TransferState.Queued);
+        Assert.Equal(TransferProgressKind.Running, list.ProgressKind);
+
+        source.Pause();
+        Assert.Equal(TransferProgressKind.Paused, list.ProgressKind);
+        source.Stop(TransferFailure.Transient(FailureReason.ConnectionLost));
+        Assert.Equal(TransferProgressKind.Stopped, list.ProgressKind);
+        source.Resume();
+        Assert.Equal(TransferProgressKind.Running, list.ProgressKind);
+
+        // 全部終われば出さない（失敗が残っていても）
+        source.Update(running with { State = TransferState.Failed, LastFailure = TransferFailure.Permanent(FailureReason.PermissionDenied) });
+        source.Update(source.GetItems()[1] with { State = TransferState.Completed });
+        Assert.Equal(TransferProgressKind.None, list.ProgressKind);
+        Assert.Equal(100, list.OverallPercent);
+    }
+
+    [Fact]
     public void Row_buttons_act_on_that_row()
     {
         var (list, source, _) = Create();

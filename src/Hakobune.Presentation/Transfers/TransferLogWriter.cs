@@ -6,24 +6,22 @@ using Hakobune.Core.Transfers;
 namespace Hakobune.Presentation.Transfers;
 
 /// <summary>
-/// 転送の結果をログに書く（1 件ずつの完了・失敗・やり直し・取り消しと、全部終わったときのまとめ）。どのスレッドから呼んでもよい。
+/// 転送の結果をログに書く（1 件ずつの完了・失敗・やり直し・取り消しと、全部終わったときのまとめ）。
+/// ログが無くても、ひと区切りまでに終わった数は数える（通知に使う）。どのスレッドから呼んでもよい。
 /// </summary>
 internal sealed class TransferLogWriter
 {
-    private readonly ActivityLog _log;
+    private readonly ActivityLog? _log;
     private readonly string? _source;
     private readonly int _maxAttempts;
     private readonly ConcurrentDictionary<Guid, TransferState> _states = new();
 
-    // まとめ（いつから何件終わったか）
+    // まとめ（前の区切りから何件終わったか）
     private readonly Lock _gate = new();
-    private int _completed;
-    private int _failed;
-    private long _bytes;
+    private TransferTotals _totals = TransferTotals.None;
 
-    public TransferLogWriter(ActivityLog log, string? source, int maxAttempts)
+    public TransferLogWriter(ActivityLog? log, string? source, int maxAttempts)
     {
-        ArgumentNullException.ThrowIfNull(log);
         _log = log;
         _source = source;
         _maxAttempts = maxAttempts;
@@ -52,9 +50,14 @@ internal sealed class TransferLogWriter
             case TransferState.Completed:
                 lock (_gate)
                 {
-                    _completed++;
-                    _bytes += Math.Max(0, item.TotalBytes);
+                    var bytes = Math.Max(0, item.TotalBytes);
+                    _totals = item.IsDelete ? _totals with { Deleted = _totals.Deleted + 1 }
+                        : item.IsFolder ? _totals with { Folders = _totals.Folders + 1 }
+                        : upload ? _totals with { Uploaded = _totals.Uploaded + 1, UploadedBytes = _totals.UploadedBytes + bytes }
+                        : _totals with { Downloaded = _totals.Downloaded + 1, DownloadedBytes = _totals.DownloadedBytes + bytes };
                 }
+                if (_log is null)
+                    break;
                 // 上書き・削除の前に控えを取ったら、そう添える
                 var backup = string.IsNullOrEmpty(item.Note) ? null : item.Note;
                 if (item.IsDelete)
@@ -66,21 +69,23 @@ internal sealed class TransferLogWriter
                 break;
             case TransferState.Failed:
                 lock (_gate)
-                    _failed++;
+                    _totals = _totals with { Failed = _totals.Failed + 1 };
+                if (_log is null)
+                    break;
                 var failed = item.IsDelete ? "サーバーから消せませんでした"
                     : item.IsFolder ? "フォルダを作れませんでした"
                     : upload ? "送れませんでした" : "受け取れませんでした";
                 _log.Error($"{failed}: {target}: {Reason(item)}", _source);
                 break;
             case TransferState.WaitingToRetry:
-                _log.Warning($"やり直します（{item.FailedAttempts}/{_maxAttempts} 回目の失敗）: {target}: {Reason(item)}", _source);
+                _log?.Warning($"やり直します（{item.FailedAttempts}/{_maxAttempts} 回目の失敗）: {target}: {Reason(item)}", _source);
                 break;
             case TransferState.Cancelled:
-                _log.Info($"取り消しました: {target}", _source);
+                _log?.Info($"取り消しました: {target}", _source);
                 break;
             case TransferState.Skipped:
                 var skipped = item.IsDelete ? "消しませんでした" : upload ? "送りませんでした" : "受け取りませんでした";
-                _log.Info($"{skipped}: {target}{(item.Note is { Length: > 0 } note ? $"（{note}）" : "")}", _source);
+                _log?.Info($"{skipped}: {target}{(item.Note is { Length: > 0 } note ? $"（{note}）" : "")}", _source);
                 break;
         }
     }
@@ -92,23 +97,29 @@ internal sealed class TransferLogWriter
             _states.TryRemove(id, out _);
     }
 
-    /// <summary>送るものが無くなった。前のまとめから後に終わった件数を書く。</summary>
-    public void OnAllDone()
+    /// <summary>前の区切りから後に終わったものを返し、数え直す。</summary>
+    public TransferTotals TakeTotals()
     {
-        int completed, failed;
-        long bytes;
         lock (_gate)
         {
-            (completed, failed, bytes) = (_completed, _failed, _bytes);
-            (_completed, _failed, _bytes) = (0, 0, 0);
+            var totals = _totals;
+            _totals = TransferTotals.None;
+            return totals;
         }
-        if (completed + failed == 0)
-            return;
-        var text = $"転送が終わりました: 完了 {completed} 件（{DisplayText.Size(bytes)}）";
-        if (failed > 0)
-            _log.Warning($"{text}、失敗 {failed} 件", _source);
+    }
+
+    /// <summary>送るものが無くなった。前の区切りから後に終わった件数をログに書いて返す（何も無ければ null）。</summary>
+    public TransferTotals? OnAllDone()
+    {
+        var totals = TakeTotals();
+        if (totals.IsEmpty)
+            return null;
+        var text = $"転送が終わりました: 完了 {totals.Completed} 件（{DisplayText.Size(totals.Bytes)}）";
+        if (totals.Failed > 0)
+            _log?.Warning($"{text}、失敗 {totals.Failed} 件", _source);
         else
-            _log.Success(text, _source);
+            _log?.Success(text, _source);
+        return totals;
     }
 
     private static string Reason(TransferItemSnapshot item) =>

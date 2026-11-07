@@ -321,6 +321,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public event EventHandler? SessionChanged;
 
     /// <summary>
+    /// 転送がひと区切りついた（終わった・失敗があった・接続できずに止まった）。設定で通知を切っていれば呼ばない。
+    /// 画面は、ウインドウが前に出ていなければ Windows の通知を出す。
+    /// </summary>
+    public event EventHandler<TransferNotice>? TransfersEnded;
+
+    /// <summary>
     /// ふだんの起動のときの画面。パソコン側はホームフォルダを開き、保存した接続先を並べる。
     /// </summary>
     public static async Task<MainViewModel> CreateAsync(AppServices services, TimeProvider? timeProvider = null, AppSettings? settings = null)
@@ -740,6 +746,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var controller = new TransferController(result.Factory!, options, queueFile, _time, Log, item.Name);
         await controller.RestoreAsync().ConfigureAwait(true);
         controller.ItemChanged += OnTransferItemChanged;
+        controller.RunEnded += OnTransfersRunEnded;
         _transferController = controller;
         Transfers.SetSource(controller);
         Transfers.Start();
@@ -752,6 +759,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             return;
         _transferController = null;
         controller.ItemChanged -= OnTransferItemChanged;
+        controller.RunEnded -= OnTransfersRunEnded;
         Transfers.SetSource(EmptyTransferSource.Instance);
         NotifyTransferCommands();
         await controller.DisposeAsync().ConfigureAwait(true);
@@ -1374,6 +1382,15 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var upload = snapshot.Direction == TransferDirection.Upload;
         Post(() => RequestRefresh(upload ? Remote : Local, upload ? snapshot.RemotePath : snapshot.LocalPath));
     }
+
+    // 転送がひと区切りついた（転送のスレッドから呼ばれる）。いまの接続先のものだけ知らせる
+    private void OnTransfersRunEnded(object? sender, TransferRunEnded ended) => Post(() =>
+    {
+        if (!ReferenceEquals(sender, _transferController) || !Settings.Notifications.NotifyWhenTransfersEnd)
+            return;
+        if (TransferNotice.From(ended, _connected?.Name) is { } notice)
+            TransfersEnded?.Invoke(this, notice);
+    });
 
     private void RequestRefresh(FilePaneViewModel pane, string changedPath)
     {

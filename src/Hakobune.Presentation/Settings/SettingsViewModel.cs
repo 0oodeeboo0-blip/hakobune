@@ -37,6 +37,9 @@ public sealed class SettingsViewModel : ObservableObject
         ShowHiddenFiles = current.ShowHiddenFiles;
         UseCompactRows = current.UseCompactRows;
 
+        NotifyWhenTransfersEnd = current.Notifications.NotifyWhenTransfersEnd;
+        ShowTaskbarProgress = current.Notifications.ShowTaskbarProgress;
+
         BackupsEnabled = current.Backups.IsEnabled;
         BackupKeepIndex = IndexOf(BackupSettings.KeepDaysChoices, current.Backups.KeepDays, fallback: 1);
         BackupSizeIndex = IndexOf(BackupSettings.TotalMegabytesChoices, current.Backups.MaxTotalMegabytes, fallback: 1);
@@ -94,6 +97,30 @@ public sealed class SettingsViewModel : ObservableObject
         {
             if (SetProperty(ref field, value))
                 Apply(_main.Settings with { UseCompactRows = value });
+        }
+    }
+
+    // ---- お知らせ ----
+
+    /// <summary>転送がひと区切りついたら、Windows の通知で知らせるか。</summary>
+    public bool NotifyWhenTransfersEnd
+    {
+        get;
+        set
+        {
+            if (SetProperty(ref field, value))
+                Apply(_main.Settings with { Notifications = _main.Settings.Notifications with { NotifyWhenTransfersEnd = value } });
+        }
+    }
+
+    /// <summary>転送中は、タスクバーのボタンに進み具合を出すか。</summary>
+    public bool ShowTaskbarProgress
+    {
+        get;
+        set
+        {
+            if (SetProperty(ref field, value))
+                Apply(_main.Settings with { Notifications = _main.Settings.Notifications with { ShowTaskbarProgress = value } });
         }
     }
 

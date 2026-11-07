@@ -1,9 +1,11 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using Hakobune.App.Infrastructure;
+using Hakobune.App.Services;
 using Hakobune.App.Views;
 using Hakobune.Presentation;
 using Hakobune.Presentation.Settings;
+using Hakobune.Presentation.Transfers;
 using Microsoft.UI;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
@@ -19,18 +21,21 @@ public sealed partial class MainWindow : Window
     private readonly MainView _view;
     private readonly AppOptions _options;
     private readonly TaskCompletionSource _loaded = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly WindowsNotifications? _notifications;
+    private readonly TaskbarProgress _taskbar;
     private bool _readyToClose;
 
     // 最大化していないときの位置と大きさ（最大化して閉じても、次は元の大きさで開いてから最大化する）
     private RectInt32 _restoredBounds;
     private bool _maximizeOnShow;
 
-    internal MainWindow(MainViewModel viewModel, AppOptions options)
+    internal MainWindow(MainViewModel viewModel, AppOptions options, WindowsNotifications? notifications = null)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         ArgumentNullException.ThrowIfNull(options);
         _viewModel = viewModel;
         _options = options;
+        _notifications = notifications;
 
         InitializeComponent();
         Title = "Hakobune";
@@ -59,13 +64,76 @@ public sealed partial class MainWindow : Window
         _restoredBounds = CurrentBounds();
         AppWindow.Changed += OnAppWindowChanged;
 
-        _view.Loaded += (_, _) => _loaded.TrySetResult();
+        // 転送の進み具合をタスクバーのボタンに出し、転送がひと区切りついたら（前に出ていなければ）通知で知らせる
+        _taskbar = new TaskbarProgress(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        viewModel.Transfers.PropertyChanged += OnTransfersPropertyChanged;
+        viewModel.TransfersEnded += OnTransfersEnded;
+
+        _view.Loaded += (_, _) =>
+        {
+            _loaded.TrySetResult();
+            // タスクバーのボタンができてから出し直す（できる前に出したものは消える）
+            _ = UpdateTaskbarSoonAsync();
+        };
         AppWindow.Closing += OnClosing;
         Closed += (_, _) =>
         {
             viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+            viewModel.Transfers.PropertyChanged -= OnTransfersPropertyChanged;
+            viewModel.TransfersEnded -= OnTransfersEnded;
             _viewModel.Dispose();
         };
+    }
+
+    /// <summary>通知を押されたときなど: 最小化していれば戻し、前に出す。</summary>
+    internal void BringToFront()
+    {
+        if (AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized } presenter)
+            presenter.Restore();
+        AppWindow.Show();
+        Activate();
+        SetForegroundWindow(WinRT.Interop.WindowNative.GetWindowHandle(this));
+    }
+
+    // 前に出ていて、最小化もしていないか（そのときは通知を出さない。画面で分かるので）
+    private bool IsInFront() =>
+        GetForegroundWindow() == WinRT.Interop.WindowNative.GetWindowHandle(this)
+        && AppWindow.Presenter is not OverlappedPresenter { State: OverlappedPresenterState.Minimized };
+
+    private void OnTransfersEnded(object? sender, TransferNotice notice)
+    {
+        if (!IsInFront())
+            _notifications?.Show(notice.Title, notice.Text);
+    }
+
+    private void OnTransfersPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(TransferListViewModel.ProgressKind) or nameof(TransferListViewModel.OverallPercent))
+            UpdateTaskbar();
+    }
+
+    private void UpdateTaskbar()
+    {
+        var transfers = _viewModel.Transfers;
+        var state = !_viewModel.Settings.Notifications.ShowTaskbarProgress ? TaskbarProgressState.None
+            : transfers.ProgressKind switch
+            {
+                TransferProgressKind.Running => TaskbarProgressState.Normal,
+                TransferProgressKind.Paused => TaskbarProgressState.Paused,
+                TransferProgressKind.Stopped => TaskbarProgressState.Error,
+                _ => TaskbarProgressState.None,
+            };
+        _taskbar.Show(state, transfers.OverallPercent);
+    }
+
+    private async Task UpdateTaskbarSoonAsync()
+    {
+        foreach (var delay in new[] { 0, 1000, 3000 })
+        {
+            await Task.Delay(delay);
+            _taskbar.Reset();
+            UpdateTaskbar();
+        }
     }
 
     /// <summary>初めて出す。前回最大化して閉じていれば、最大化する。</summary>
@@ -79,7 +147,10 @@ public sealed partial class MainWindow : Window
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(MainViewModel.Settings))
+        {
             ApplyTheme();
+            UpdateTaskbar();
+        }
     }
 
     // 設定の画面の色にする。--theme の指定（画面写真）があれば、アプリ全体の色をそれで決めてあるので、設定より優先する
@@ -247,4 +318,11 @@ public sealed partial class MainWindow : Window
 
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(nint hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(nint hwnd);
 }

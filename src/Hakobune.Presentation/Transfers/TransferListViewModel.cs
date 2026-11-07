@@ -6,6 +6,22 @@ using Hakobune.Core.Transfers;
 
 namespace Hakobune.Presentation.Transfers;
 
+/// <summary>転送の進み具合の種類（タスクバーのボタンの色に使う）。</summary>
+public enum TransferProgressKind
+{
+    /// <summary>送るものが無い（出さない）。</summary>
+    None,
+
+    /// <summary>送っている（緑）。</summary>
+    Running,
+
+    /// <summary>一時停止している（黄）。</summary>
+    Paused,
+
+    /// <summary>接続できずに止まった（赤）。</summary>
+    Stopped,
+}
+
 /// <summary>
 /// 下の転送の一覧と、ステータスバーの進み具合。
 /// </summary>
@@ -186,6 +202,9 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
 
     /// <summary>接続できなくて止まったか（注意の色で出す）。</summary>
     public bool IsStoppedByFailure { get; private set => SetProperty(ref field, value); }
+
+    /// <summary>タスクバーのボタンに出す進み具合の種類（進み具合は <see cref="OverallPercent"/>）。</summary>
+    public TransferProgressKind ProgressKind { get; private set => SetProperty(ref field, value); }
 
     /// <summary>一時停止のボタンの説明。</summary>
     public string PauseButtonText => IsPaused ? "再開" : "すべて一時停止";
@@ -478,7 +497,14 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
             : restored > 0 ? $"前回の残りが {restored:N0} 件あります。再開すると続きから送ります"
             : "一時停止中";
         PauseAllCommand.NotifyCanExecuteChanged();
+        UpdateProgressKind();
     }
+
+    private void UpdateProgressKind() =>
+        ProgressKind = PendingCount == 0 ? TransferProgressKind.None
+            : IsStoppedByFailure ? TransferProgressKind.Stopped
+            : IsPaused ? TransferProgressKind.Paused
+            : TransferProgressKind.Running;
 
     private void TogglePause()
     {
@@ -599,6 +625,7 @@ public sealed class TransferListViewModel : ObservableObject, IDisposable
         PendingCount = active.Count + queued.Count;
         FinishedCount = done.Count + failed.Count;
         PauseAllCommand.NotifyCanExecuteChanged();
+        UpdateProgressKind();
         HasItems = _rows.Count > 0;
 
         // 待機中の何番目か

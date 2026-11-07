@@ -2,6 +2,7 @@ using Hakobune.App.Services;
 using Hakobune.Presentation;
 using Hakobune.Presentation.Demo;
 using Hakobune.Presentation.Settings;
+using Hakobune.Presentation.Transfers;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 
@@ -9,6 +10,7 @@ namespace Hakobune.App;
 
 public partial class App : Application
 {
+    private readonly WindowsNotifications _notifications = new();
     private MainWindow? _window;
 
     public App()
@@ -52,11 +54,20 @@ public partial class App : Application
                 var settings = await AppSettings.LoadAsync(services.SettingsFile);
                 viewModel = await MainViewModel.CreateAsync(services, null, settings);
             }
-            _window = new MainWindow(viewModel, Options);
+            // Windows の通知: ふだんの起動と、見本の通知のときだけ使う（画面写真のときは Windows に登録しない）
+            if (Options.ScreenshotPath is null || Options.ShowSampleNotification)
+            {
+                _notifications.Register(Path.Combine(AppContext.BaseDirectory, "Assets", "Hakobune.ico"));
+                _notifications.Invoked += (_, _) => _window?.DispatcherQueue.TryEnqueue(() => _window?.BringToFront());
+            }
+            _window = new MainWindow(viewModel, Options, _notifications);
+            _window.Closed += (_, _) => _notifications.Dispose();
             _window.Show();
 
             // 接続のときのダイアログを出せるよう、画面ができてから始める
             await _window.WhenLoaded;
+            if (Options.ShowSampleNotification && TransferNotice.From(DemoData.SampleRunEnded, "ショップ（本番）") is { } sample)
+                _notifications.Show(sample.Title, sample.Text);
             var ready = Start(viewModel, dialogs);
             if (Options.ScreenshotPath is not { } path)
                 return;

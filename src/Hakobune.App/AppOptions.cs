@@ -17,6 +17,7 @@ namespace Hakobune.App;
 /// rename、delete-files、permissions、conflict、stop、settings、settings-exclusions）。</item>
 /// <item><c>--theme light|dark</c>: ライト・ダークを決める（省くと Windows の設定に合わせる）。</item>
 /// <item><c>--log</c>: 下の一覧で「ログ」を出しておく。</item>
+/// <item><c>--notify</c>: 見本の通知（転送が終わりました）を出す（CI で通知の見た目を撮る）。</item>
 /// <item><c>--screenshot ファイル名</c>: 画面写真を PNG で保存して終わる。</item>
 /// <item><c>--size 幅x高さ</c>: ウインドウの中の大きさ（既定 1280x800）。</item>
 /// </list>
@@ -49,6 +50,9 @@ internal sealed record AppOptions
 
     /// <summary>下の一覧で「控え」を出しておく。</summary>
     public bool ShowBackups { get; init; }
+
+    /// <summary>見本の通知を出す。</summary>
+    public bool ShowSampleNotification { get; init; }
 
     /// <summary>ウインドウの中の幅。</summary>
     public int Width { get; init; } = 1280;
@@ -136,6 +140,9 @@ internal sealed record AppOptions
                     break;
                 case "--backups":
                     options = options with { ShowBackups = true };
+                    break;
+                case "--notify":
+                    options = options with { ShowSampleNotification = true };
                     break;
                 case "--screenshot":
                     options = options with { ScreenshotPath = value };

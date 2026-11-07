@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using Hakobune.Core.Backups;
 using Hakobune.Core.Connections;
@@ -5,6 +6,7 @@ using Hakobune.Core.Remote;
 using Hakobune.Core.Transfers;
 using Hakobune.Presentation.Connections;
 using Hakobune.Presentation.Files;
+using Hakobune.Presentation.Settings;
 using Hakobune.Presentation.Transfers;
 
 namespace Hakobune.Presentation.Tests.Connections;
@@ -235,6 +237,35 @@ public sealed class MainViewModelTransferTests : IDisposable
         Assert.Equal("body {}", Encoding.UTF8.GetString(_server.Files["/home/web/css/site.css"]));
         Assert.Empty(_transferDialogs.ConflictQuestions);
         Assert.Equal(2, main.Transfers.TotalCount);
+    }
+
+    [Fact]
+    public async Task The_end_of_transfers_is_announced_unless_turned_off()
+    {
+        WriteLocal("index.html", "hello");
+        using var main = await ConnectAsync();
+        await main.Local.RefreshAsync();
+        var notices = new ConcurrentQueue<TransferNotice>();
+        main.TransfersEnded += (_, notice) => notices.Enqueue(notice);
+
+        main.Local.UpdateSelection([.. main.Local.Items]);
+        await main.UploadCommand.ExecuteAsync(null);
+        await WaitForAsync(() => !notices.IsEmpty);
+
+        var notice = Assert.Single(notices);
+        Assert.Equal("アップロードが終わりました", notice.Title);
+        Assert.Equal("ショップ: 1 件を送りました（5 バイト）", notice.Text);
+        Assert.False(notice.IsProblem);
+
+        // 通知を切ると知らせない
+        await main.ApplySettingsAsync(main.Settings with { Notifications = new NotificationSettings { NotifyWhenTransfersEnd = false } });
+        WriteLocal("about.html", "about");
+        await main.Local.RefreshAsync();
+        main.Local.UpdateSelection([main.Local.Items.Single(row => row.Name == "about.html")]);
+        await main.UploadCommand.ExecuteAsync(null);
+        await WaitForAsync(() => main.Log.GetSnapshot().Entries.Count(entry => entry.Message.StartsWith("転送が終わりました", StringComparison.Ordinal)) == 2);
+        await Task.Delay(200, TestContext.Current.CancellationToken);
+        Assert.Single(notices);
     }
 
     [Fact]

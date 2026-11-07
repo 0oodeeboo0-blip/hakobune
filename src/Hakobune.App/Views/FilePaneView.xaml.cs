@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using Hakobune.App.Helpers;
 using Hakobune.Presentation.Files;
 using Microsoft.UI.Xaml;
@@ -221,7 +222,7 @@ public sealed partial class FilePaneView : UserControl
 
     private MarqueeState? _marquee;
     private bool _applyingMarquee;
-    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _autoScroll;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _marqueeTimer;
     private double _autoScrollStep;
     private ScrollViewer? _scroller;
 
@@ -255,6 +256,7 @@ public sealed partial class FilePaneView : UserControl
         _marquee = new MarqueeState
         {
             PointerId = e.Pointer.PointerId,
+            PressedSource = e.OriginalSource as DependencyObject,
             Start = e.GetCurrentPoint(panel).Position,
             StartInList = point.Position,
             OnEmptySpace = zone == PressZone.Empty,
@@ -286,9 +288,10 @@ public sealed partial class FilePaneView : UserControl
                 return;
             // 囲み始める。マウスをこちらで受け持ち、行がファイルのドラッグを始めないようにする
             marquee.IsActive = true;
-            FileList.CapturePointer(e.Pointer);
+            TakeCapture(marquee.PressedSource, e.Pointer);
             FocusList(marquee);
             MarqueeBox.Visibility = Visibility.Visible;
+            StartMarqueeTimer();
         }
         e.Handled = true;
         UpdateMarquee();
@@ -318,6 +321,18 @@ public sealed partial class FilePaneView : UserControl
     {
         if (_marquee is { } marquee && e.Pointer.PointerId == marquee.PointerId)
             EndMarquee();
+    }
+
+    // 押したときに行がマウスを受け持つので、手放させてから一覧で受け持つ。行に受け持たせたままだと、
+    // 流して行が見えなくなったところで受け持ちが外れ、離したのが一覧に届かなくなる
+    private void TakeCapture(DependencyObject? pressed, Pointer pointer)
+    {
+        for (var current = pressed; current is not null && !ReferenceEquals(current, FileList); current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is UIElement element && element.PointerCaptures?.Any(captured => captured.PointerId == pointer.PointerId) == true)
+                element.ReleasePointerCapture(pointer);
+        }
+        FileList.CapturePointer(pointer);
     }
 
     // 一覧がマウスを受け持てなくなった（別のウインドウに切り替えたなど）。行がマウスを手放したときは、ここに来ても続ける
@@ -477,42 +492,53 @@ public sealed partial class FilePaneView : UserControl
         return (0, ViewModel?.UseCompactRows == true ? 28 : 34);
     }
 
-    // 上下の端の外まで引いているあいだは、離れているほど速く一覧を流す
+    // 上下の端の外まで引いているあいだは、離れているほど速く一覧を流す（流すのは、囲んでいるあいだ動いている時計が行う）
     private void UpdateAutoScroll()
     {
         if (_marquee is not { IsActive: true } marquee)
         {
-            StopAutoScroll();
+            _autoScrollStep = 0;
             return;
         }
         const double Edge = 4;
         var y = marquee.Current.Y;
         var height = FileList.ActualHeight;
         var overshoot = y < Edge ? y - Edge : y > height - Edge ? y - (height - Edge) : 0;
-        if (overshoot == 0)
-        {
-            StopAutoScroll();
-            return;
-        }
-        _autoScrollStep = Math.Sign(overshoot) * Math.Min(60, 4 + Math.Abs(overshoot) / 2);
-        if (_autoScroll is null)
-        {
-            _autoScroll = DispatcherQueue.CreateTimer();
-            _autoScroll.Interval = TimeSpan.FromMilliseconds(30);
-            _autoScroll.Tick += OnAutoScrollTick;
-        }
-        if (!_autoScroll.IsRunning)
-            _autoScroll.Start();
+        _autoScrollStep = overshoot == 0 ? 0 : Math.Sign(overshoot) * Math.Min(60, 4 + Math.Abs(overshoot) / 2);
     }
 
-    private void OnAutoScrollTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    private void StartMarqueeTimer()
     {
-        _scroller ??= FindScrollViewer(FileList);
-        if (_marquee is not { IsActive: true } || _scroller is not { } scroller)
+        if (_marqueeTimer is null)
         {
-            StopAutoScroll();
+            _marqueeTimer = DispatcherQueue.CreateTimer();
+            _marqueeTimer.Interval = TimeSpan.FromMilliseconds(30);
+            _marqueeTimer.Tick += OnMarqueeTick;
+        }
+        if (!_marqueeTimer.IsRunning)
+            _marqueeTimer.Start();
+    }
+
+    private void OnMarqueeTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+    {
+        if (_marquee is not { IsActive: true })
+        {
+            sender.Stop();
             return;
         }
+        // 離したのが届かなかったとき（どこかで受け持ちが外れたなど）も、ボタンを見て終える。枠が残らないように
+        if (!IsPrimaryButtonDown())
+        {
+            UpdateMarquee();
+            EndMarquee();
+            FileList.ReleasePointerCaptures();
+            return;
+        }
+        if (_autoScrollStep == 0)
+            return;
+        _scroller ??= FindScrollViewer(FileList);
+        if (_scroller is not { } scroller)
+            return;
         // 前の回に流した分を、枠と選択に入れてから、また流す
         UpdateMarquee();
         var target = Math.Clamp(scroller.VerticalOffset + _autoScrollStep, 0, scroller.ScrollableHeight);
@@ -520,13 +546,28 @@ public sealed partial class FilePaneView : UserControl
             scroller.ChangeView(null, target, null, disableAnimation: true);
     }
 
-    private void StopAutoScroll() => _autoScroll?.Stop();
+    // 主ボタン（ふつうは左。左利きの設定なら右）を押しているか
+    private static bool IsPrimaryButtonDown()
+    {
+        const int SwapButton = 23;
+        const int LeftButton = 0x01;
+        const int RightButton = 0x02;
+        var button = GetSystemMetrics(SwapButton) != 0 ? RightButton : LeftButton;
+        return (GetAsyncKeyState(button) & 0x8000) != 0;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int key);
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
 
     private void EndMarquee()
     {
         _marquee = null;
+        _autoScrollStep = 0;
         MarqueeBox.Visibility = Visibility.Collapsed;
-        StopAutoScroll();
+        _marqueeTimer?.Stop();
     }
 
     private static ScrollViewer? FindScrollViewer(DependencyObject root)
@@ -545,6 +586,9 @@ public sealed partial class FilePaneView : UserControl
     private sealed class MarqueeState
     {
         public required uint PointerId { get; init; }
+
+        // 押した所（行がマウスを受け持っていれば、そこから手放させる）
+        public DependencyObject? PressedSource { get; init; }
 
         // 押した位置（行を並べた板の上）
         public required Point Start { get; init; }

@@ -557,6 +557,8 @@ jobs:
           Save-Window 'marquee-autoscroll'
           [Input]::LeftUp()
           Start-Sleep -Milliseconds 700
+          # 一覧の外で離しても、枠は消える
+          Save-Window 'marquee-autoscroll-done'
           Test-Alive '端の外まで引いて選ぶ'
           Test-Summary '11 項目' '10 個を選択'
 
@@ -578,6 +580,53 @@ jobs:
           if ($failed) {
             exit 1
           }
+
+      # 見本の通知（転送が終わりました）と、タスクバーのボタンの進み具合（見本は 76%）を、画面全体で撮る
+      - name: 通知とタスクバーの画面写真
+        shell: pwsh
+        run: |
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class Screen2
+          {
+              [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hwnd);
+              [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
+              [DllImport("gdi32.dll")] private static extern bool BitBlt(IntPtr dest, int x, int y, int w, int h, IntPtr src, int sx, int sy, uint rop);
+              public static void CopyScreen(IntPtr dest, int w, int h)
+              {
+                  var screen = GetDC(IntPtr.Zero);
+                  try { BitBlt(dest, 0, 0, w, h, screen, 0, 0, 0x00CC0020 | 0x40000000); }
+                  finally { ReleaseDC(IntPtr.Zero, screen); }
+              }
+          }
+          '@
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $exe = Join-Path $PWD 'publish\Hakobune-win-x64\Hakobune.exe'
+          New-Item -ItemType Directory -Force screenshots | Out-Null
+          $p = Start-Process -FilePath $exe -ArgumentList '--demo --notify --theme light --size 1280x800' -PassThru
+          $hwnd = [IntPtr]::Zero
+          for ($i = 0; $i -lt 60 -and $hwnd -eq [IntPtr]::Zero; $i++) {
+            Start-Sleep -Milliseconds 500
+            $p.Refresh()
+            $hwnd = $p.MainWindowHandle
+          }
+          # 通知は 5 秒ほどで引っ込むので、出てすぐに撮る
+          Start-Sleep -Seconds 3
+          if ($p.HasExited) {
+            Write-Host "::error::アプリが終了しました (終了コード $($p.ExitCode))"
+            exit 1
+          }
+          $bounds = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $hdc = $g.GetHdc()
+          [Screen2]::CopyScreen($hdc, $bounds.Width, $bounds.Height)
+          $g.ReleaseHdc($hdc)
+          $bmp.Save((Join-Path $PWD 'screenshots\notification.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+          $g.Dispose()
+          $bmp.Dispose()
+          Stop-Process -Id $p.Id -Force
 
       - name: 画面写真を保存
         if: always()

@@ -185,6 +185,67 @@ public sealed class TransferControllerTests : IDisposable
     }
 
     [Fact]
+    public async Task The_end_of_a_run_is_announced_with_what_finished_even_without_a_log()
+    {
+        var server = new MemoryTransferServer
+        {
+            BeforeUpload = (path, _) => path.EndsWith("file1.txt", StringComparison.Ordinal)
+                ? throw new RemoteOperationException(new TransferFailure(FailureReason.PermissionDenied, FailureKind.Permanent, 550))
+                : Task.CompletedTask,
+        };
+        await using var controller = new TransferController(server, Fast, QueueFile);
+        var ended = new System.Collections.Concurrent.ConcurrentQueue<TransferRunEnded>();
+        controller.RunEnded += (_, e) => ended.Enqueue(e);
+
+        controller.Enqueue(Uploads(3));
+        await WaitForAsync(() => !ended.IsEmpty);
+
+        var first = Assert.Single(ended);
+        Assert.False(first.Stopped);
+        Assert.Equal(new TransferTotals(Uploaded: 2, Downloaded: 0, Deleted: 0, Folders: 0, Failed: 1, UploadedBytes: 22, DownloadedBytes: 0), first.Totals);
+
+        // 次の区切りは、そのあとの分だけ数える
+        controller.Enqueue([Uploads(4)[3]]);
+        await WaitForAsync(() => ended.Count == 2);
+        Assert.Equal(new TransferTotals(1, 0, 0, 0, 0, 13, 0), ended.Last().Totals);
+    }
+
+    [Fact]
+    public async Task Stopping_because_the_server_refuses_is_announced_with_the_reason()
+    {
+        var server = new MemoryTransferServer { ConnectFault = TransferFailure.Permanent(FailureReason.AuthenticationFailed) };
+        await using var controller = new TransferController(server, Fast);
+        var ended = new System.Collections.Concurrent.ConcurrentQueue<TransferRunEnded>();
+        controller.RunEnded += (_, e) => ended.Enqueue(e);
+
+        controller.Enqueue(Uploads(2));
+        await WaitForAsync(() => !ended.IsEmpty);
+
+        var stopped = Assert.Single(ended);
+        Assert.True(stopped.Stopped);
+        Assert.Equal(FailureReason.AuthenticationFailed, stopped.Reason?.Reason);
+        Assert.True(stopped.Totals.IsEmpty);
+    }
+
+    [Fact]
+    public async Task Pausing_by_hand_is_not_announced()
+    {
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var server = new MemoryTransferServer { BeforeUpload = (_, token) => release.Task.WaitAsync(token) };
+        await using var controller = new TransferController(server, Fast);
+        var ended = 0;
+        controller.RunEnded += (_, _) => Interlocked.Increment(ref ended);
+        controller.Enqueue(Uploads(2));
+        await WaitForAsync(() => controller.GetItems().Any(item => item.State == TransferState.Running));
+
+        controller.Pause();
+        await WaitForAsync(() => !controller.IsRunning);
+
+        Assert.Equal(0, Volatile.Read(ref ended));
+        release.SetResult();
+    }
+
+    [Fact]
     public async Task Clearing_finished_items_empties_the_saved_queue()
     {
         var server = new MemoryTransferServer();
