@@ -29,6 +29,8 @@
     名前の変更、ファイルの削除、属性、同じ名前があるとき、転送中に閉じるとき、設定、設定の「送らないファイル」、
     同期の確認、控えから元に戻すとき。`dialog-sync-dark.png` は「これも送る」と「サーバーからも消す」を選んだところ）。
   - `connected.png`: Windows の上の FTP サーバー（pyftpdlib）に `--connect` で実際に接続し、`--upload` でフォルダを送り終えた画面。
+  - `marquee-drag.png`、`marquee-done.png`、`marquee-autoscroll.png`、`drag-file.png`: 本物のマウスの操作（CI が user32 で動かす）で、
+    一覧を囲んで選んでいる途中と終わり、端の外まで引いて流したところ、名前を掴んでファイルをドラッグしているところ（ウインドウの中身だけ）。
   - アプリが画面写真を撮れなかったときは、同じ名前の `.error.txt` もブランチに置かれる。
 - 見本の画面は `Hakobune.exe --demo [--scenario stale|refreshed] [--theme light|dark] [--log] [--backups] [--screenshot ファイル名] [--size 1280x800]` で出せる。
   `--scenario refreshed` は、撮る直前にサーバーの一覧を取り直す（2 つ増え、index.html が変わる）。
@@ -54,6 +56,7 @@
 
 - csproj などの XML のコメントに「--」を書かない（読み込みエラーになる）。XAML のコメントも同じ。
 - XAML のパスのデータ（`Path.Data`）は、絶対座標の M・L・C・A・Z だけで書く（SVG の省略した書き方は読めないことがある）。
+- ContentDialog は中身を縦に送らない（テンプレートの ContentScrollViewer が Disabled）。`DialogService.ShowAsync` が ScrollViewer に包むので、中身の側で包まなくてよい。
 
 ## 守ること
 

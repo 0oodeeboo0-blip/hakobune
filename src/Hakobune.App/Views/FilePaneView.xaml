@@ -59,10 +59,13 @@
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
+                        <!--  アイコンと名前を掴むとファイルのドラッグ。それ以外の所から引くと、囲んで選ぶ（Tag で見分ける）  -->
                         <Grid
                             Width="20"
                             Height="20"
-                            VerticalAlignment="Center">
+                            VerticalAlignment="Center"
+                            Background="Transparent"
+                            Tag="RowHandle">
                             <!--  フォルダ  -->
                             <Path
                                 Data="M 2.5,6 A 1.75,1.75 0 0 1 4.25,4.25 L 7.35,4.25 C 7.75,4.25 8.13,4.41 8.41,4.69 L 9.6,5.9 L 15.75,5.9 A 1.75,1.75 0 0 1 17.5,7.65 L 17.5,14.25 A 1.75,1.75 0 0 1 15.75,16 L 4.25,16 A 1.75,1.75 0 0 1 2.5,14.25 Z"
@@ -171,8 +174,10 @@
                         </Grid>
                         <TextBlock
                             Grid.Column="1"
+                            HorizontalAlignment="Left"
                             VerticalAlignment="Center"
                             Opacity="{x:Bind NameOpacity}"
+                            Tag="RowHandle"
                             Text="{x:Bind Name}"
                             TextTrimming="CharacterEllipsis" />
                         <!--  送らないファイルの印（パソコン側の一覧だけ）  -->
@@ -182,6 +187,7 @@
                             VerticalAlignment="Center"
                             Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                             CornerRadius="9"
+                            Tag="RowHandle"
                             ToolTipService.ToolTip="{x:Bind ExcludedTip}"
                             Visibility="{x:Bind IsExcluded}">
                             <TextBlock
@@ -493,10 +499,12 @@
         </Grid>
 
         <!--  一覧  -->
+        <!--  行の無い所でもマウスを受け取れるよう、背景は透明にしておく（囲んで選ぶため）  -->
         <ListView
             x:Name="FileList"
             Grid.Row="4"
             Padding="0,4"
+            Background="Transparent"
             CanDragItems="True"
             ContainerContentChanging="OnContainerContentChanging"
             DoubleTapped="OnListDoubleTapped"
@@ -512,11 +520,26 @@
                 <TransitionCollection />
             </ListView.ItemContainerTransitions>
         </ListView>
+        <!--  マウスで囲んで選ぶときの枠（FilePaneView.xaml.cs が出す）  -->
+        <Canvas
+            x:Name="MarqueeLayer"
+            Grid.Row="4"
+            IsHitTestVisible="False">
+            <Rectangle
+                x:Name="MarqueeBox"
+                Fill="{ThemeResource HakobuneAccentTintBrush}"
+                RadiusX="2"
+                RadiusY="2"
+                Stroke="{ThemeResource HakobuneAccentTextBrush}"
+                StrokeThickness="1"
+                Visibility="Collapsed" />
+        </Canvas>
         <StackPanel
             Grid.Row="4"
             MaxWidth="360"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
+            IsHitTestVisible="False"
             Spacing="4"
             Visibility="{x:Bind ViewModel.ShowsEmptyText, Mode=OneWay}">
             <TextBlock
@@ -535,6 +558,7 @@
             Grid.Row="4"
             Width="32"
             Height="32"
-            IsActive="{x:Bind ViewModel.ShowsProgress, Mode=OneWay}" />
+            IsActive="{x:Bind ViewModel.ShowsProgress, Mode=OneWay}"
+            IsHitTestVisible="False" />
     </Grid>
 </UserControl>

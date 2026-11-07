@@ -3,6 +3,8 @@ using Hakobune.Presentation.Settings;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
+using Windows.Foundation;
 using Windows.System;
 
 namespace Hakobune.App.Views;
@@ -25,17 +27,40 @@ public sealed partial class SettingsView : UserControl
     public SettingsViewModel ViewModel { get; }
 
     /// <summary>
-    /// 「送らないファイル」のところを見せる。ダイアログが開き終わってから呼ぶ
-    /// （開いたときにダイアログが最初の部品へ移す選択で、上まで戻されないように、選択もそこへ移す）。
+    /// 「送らないファイル」のところを見せる。ダイアログが開き終わってから呼ぶ。
+    /// 開いた直後は、ダイアログが選択を最初の部品へ移して上まで戻すことがあるので、少しのあいだ何度か合わせ直す。
     /// </summary>
-    public void ShowExclusions()
+    public void ShowExclusions() => _ = ShowExclusionsAsync();
+
+    private async Task ShowExclusionsAsync()
     {
-        ExclusionsToggle.Focus(FocusState.Programmatic);
-        ExclusionsHeading.StartBringIntoView(new BringIntoViewOptions
+        try
         {
-            AnimationDesired = false,
-            VerticalAlignmentRatio = 0,
-        });
+            ExclusionsToggle.Focus(FocusState.Programmatic);
+            foreach (var delay in new[] { 0, 100, 200, 300 })
+            {
+                if (delay > 0)
+                    await Task.Delay(delay);
+                ScrollToExclusions();
+            }
+        }
+        catch (ArgumentException)
+        {
+            // 閉じたあとなど、画面の木から外れていたら何もしない
+        }
+    }
+
+    private void ScrollToExclusions()
+    {
+        for (var current = VisualTreeHelper.GetParent(this); current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (current is ScrollViewer { Content: UIElement content } scroller)
+            {
+                var top = ExclusionsHeading.TransformToVisual(content).TransformPoint(new Point(0, 0)).Y;
+                scroller.ChangeView(null, top, null, disableAnimation: true);
+                return;
+            }
+        }
     }
 
     // 名前の欄で Enter を押すと足す（ダイアログが閉じないよう、ここで受け止める）

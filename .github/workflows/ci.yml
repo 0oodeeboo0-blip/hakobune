@@ -403,6 +403,172 @@ jobs:
             exit 1
           }
 
+      # 本物のマウスの操作で、一覧を囲んで選ぶ（ローカル）、端の外まで引いて流しながら選ぶ（サーバー）、名前を掴んでファイルをドラッグする。
+      # 途中と終わりの画面を撮り、見出しの「N 個を選択」で、選べた数を確かめる（座標は 1280x800 の見本の画面のもの）。
+      - name: マウスで囲んで選ぶテスト
+        shell: pwsh
+        run: |
+          Add-Type -TypeDefinition @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class Input
+          {
+              [StructLayout(LayoutKind.Sequential)]
+              public struct POINT { public int X; public int Y; }
+
+              [DllImport("user32.dll")] private static extern bool ClientToScreen(IntPtr hwnd, ref POINT point);
+              [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hwnd);
+              [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
+              [DllImport("user32.dll")] private static extern void mouse_event(uint flags, int dx, int dy, uint data, UIntPtr extra);
+              [DllImport("user32.dll")] private static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+
+              public static POINT Origin(IntPtr hwnd) { var p = new POINT(); ClientToScreen(hwnd, ref p); return p; }
+              public static void Activate(IntPtr hwnd) { SetForegroundWindow(hwnd); }
+              public static void MoveTo(int x, int y)
+              {
+                  var w = GetSystemMetrics(0);
+                  var h = GetSystemMetrics(1);
+                  mouse_event(0x0001 | 0x8000, (int)Math.Round(x * 65535.0 / (w - 1)), (int)Math.Round(y * 65535.0 / (h - 1)), 0, UIntPtr.Zero);
+              }
+              public static void LeftDown() { mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero); }
+              public static void LeftUp() { mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero); }
+              public static void Key(byte vk) { keybd_event(vk, 0, 0, UIntPtr.Zero); keybd_event(vk, 0, 2, UIntPtr.Zero); }
+          }
+          '@
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          $uia = $true
+          try {
+            Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+          } catch {
+            $uia = $false
+            Write-Host "::warning::UI オートメーションを読み込めないので、選べた数は画面写真で確かめてください: $_"
+          }
+
+          $exe = Join-Path $PWD 'publish\Hakobune-win-x64\Hakobune.exe'
+          New-Item -ItemType Directory -Force screenshots | Out-Null
+          $p = Start-Process -FilePath $exe -ArgumentList '--demo --theme light --size 1280x800' -PassThru
+          $hwnd = [IntPtr]::Zero
+          for ($i = 0; $i -lt 60 -and $hwnd -eq [IntPtr]::Zero; $i++) {
+            Start-Sleep -Milliseconds 500
+            $p.Refresh()
+            $hwnd = $p.MainWindowHandle
+          }
+          if ($hwnd -eq [IntPtr]::Zero) {
+            Write-Error 'ウインドウが出ませんでした'
+            exit 1
+          }
+          Start-Sleep -Seconds 5
+          [Input]::Activate($hwnd)
+          Start-Sleep -Milliseconds 500
+          $origin = [Input]::Origin($hwnd)
+          Write-Host "ウインドウの中身の左上: $($origin.X), $($origin.Y)"
+
+          function Save-Window([string]$name) {
+            $bmp = New-Object System.Drawing.Bitmap 1280, 800
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            # ドラッグ中の絵（別のウインドウ）も写るように CaptureBlt を付ける
+            $op = [System.Drawing.CopyPixelOperation]::SourceCopy -bor [System.Drawing.CopyPixelOperation]::CaptureBlt
+            $g.CopyFromScreen($origin.X, $origin.Y, 0, 0, $bmp.Size, $op)
+            $bmp.Save((Join-Path $PWD "screenshots\$name.png"), [System.Drawing.Imaging.ImageFormat]::Png)
+            $g.Dispose()
+            $bmp.Dispose()
+          }
+          function Move-To([double]$x, [double]$y) {
+            [Input]::MoveTo([int]($origin.X + $x), [int]($origin.Y + $y))
+          }
+          function Drag-To([double]$fromX, [double]$fromY, [double]$toX, [double]$toY) {
+            for ($i = 1; $i -le 25; $i++) {
+              Move-To ($fromX + ($toX - $fromX) * $i / 25) ($fromY + ($toY - $fromY) * $i / 25)
+              Start-Sleep -Milliseconds 20
+            }
+          }
+          # 見出しの「13 項目・6 個を選択」などを読む
+          function Get-Summary([string]$prefix) {
+            if (-not $uia) {
+              return $null
+            }
+            $root = [System.Windows.Automation.AutomationElement]::FromHandle($hwnd)
+            $condition = [System.Windows.Automation.PropertyCondition]::new(
+              [System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Text)
+            foreach ($element in $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)) {
+              $name = $element.Current.Name
+              if ($name -and $name.StartsWith($prefix)) {
+                return $name
+              }
+            }
+            return '（見つかりません）'
+          }
+          $failed = $false
+          function Test-Summary([string]$prefix, [string]$expected) {
+            try {
+              $summary = Get-Summary $prefix
+            } catch {
+              Write-Host "::warning::見出しを読めませんでした: $_"
+              return
+            }
+            if ($null -eq $summary) {
+              return
+            }
+            Write-Host "見出し: $summary"
+            if (-not $summary.EndsWith($expected)) {
+              Write-Host "::error::選べた数が違います（$expected のはず）: $summary"
+              $script:failed = $true
+            }
+          }
+          function Test-Alive([string]$after) {
+            if ($p.HasExited) {
+              Write-Host "::error::$after のあとでアプリが終了しました (終了コード $($p.ExitCode))"
+              Get-WinEvent -FilterHashtable @{ LogName = 'Application'; Level = 2 } -MaxEvents 5 -ErrorAction SilentlyContinue |
+                ForEach-Object { Write-Host "---- $($_.TimeCreated) $($_.ProviderName)"; Write-Host $_.Message }
+              exit 1
+            }
+          }
+
+          # 1. ローカルの一覧: 1 行目（css）の名前の右の空いている所から、6 行目（about.html）まで囲む
+          Move-To 480 239
+          Start-Sleep -Milliseconds 300
+          [Input]::LeftDown()
+          Drag-To 480 239 540 409
+          Start-Sleep -Milliseconds 500
+          Save-Window 'marquee-drag'
+          [Input]::LeftUp()
+          Start-Sleep -Milliseconds 700
+          Save-Window 'marquee-done'
+          Test-Alive '囲んで選ぶ'
+          Test-Summary '13 項目' '6 個を選択'
+
+          # 2. サーバーの一覧: 2 行目（images）の空いている所から、一覧の下の外まで引き、流れて最後の行まで選ばれるのを待つ
+          Move-To 950 273
+          Start-Sleep -Milliseconds 300
+          [Input]::LeftDown()
+          Drag-To 950 273 980 470
+          Drag-To 980 470 980 560
+          Start-Sleep -Milliseconds 1500
+          Save-Window 'marquee-autoscroll'
+          [Input]::LeftUp()
+          Start-Sleep -Milliseconds 700
+          Test-Alive '端の外まで引いて選ぶ'
+          Test-Summary '11 項目' '10 個を選択'
+
+          # 3. ローカルの一覧: 名前（index.html）を掴むと、これまでどおりファイルのドラッグになる。サーバー側の上で撮り、Esc でやめる
+          Move-To 320 477
+          Start-Sleep -Milliseconds 300
+          [Input]::LeftDown()
+          Drag-To 320 477 600 430
+          Drag-To 600 430 900 380
+          Start-Sleep -Milliseconds 800
+          Save-Window 'drag-file'
+          [Input]::Key(0x1B)
+          Start-Sleep -Milliseconds 300
+          [Input]::LeftUp()
+          Start-Sleep -Milliseconds 700
+          Test-Alive 'ファイルのドラッグ'
+
+          Stop-Process -Id $p.Id -Force
+          if ($failed) {
+            exit 1
+          }
+
       - name: 画面写真を保存
         if: always()
         uses: actions/upload-artifact@v6
