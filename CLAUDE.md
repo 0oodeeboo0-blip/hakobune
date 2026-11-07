@@ -46,8 +46,10 @@
   `--connect URL` で起動してすぐクイック接続する（`--screenshot` と一緒なら、接続できなかったとき `.error.txt` を書く）。
   `--upload パス` を足すと、接続したあとそのファイルかフォルダを送り、終わるまで待つ（送れなかったら `.error.txt`）。
 - アプリのビルド結果（zip）は、利用者が Actions の成果物 `Hakobune-win-x64` からダウンロードする。
-- 配布: `v0.3.0` のようなタグを push すると、`.github/workflows/release.yml` が zip を作って GitHub の Releases に置く
-  （説明は `docs/releases/<版>.md`、無ければ `docs/releases/default.md`。「-」を含むタグは先行版）。
+- 配布: `v0.3.0` のようなタグを push するか、Actions の「Release」で「Run workflow」を押して版を入れると、
+  `.github/workflows/release.yml` が zip を作って GitHub の Releases に置く
+  （説明は `docs/releases/<版>.md`、無ければ `docs/releases/default.md`。「-」を含む版は先行版）。
+  Claude の作業環境からはタグを push できない（git の中継が 403 を返す）。出すときは利用者に「Run workflow」を押してもらう。
   アプリは起動したときに Releases のいちばん新しい版を見て（20 時間に 1 回まで）、新しければステータスバーで知らせる。
 - ライブラリの API は、公開リポジトリを `git clone --depth 1` して読む（GitHub には git で接続できる）。例: FluentFTP、SSH.NET。
 

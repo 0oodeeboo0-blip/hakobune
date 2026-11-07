@@ -1,11 +1,17 @@
 name: Release
 
-# v で始まるタグ（例: v0.3.0）を push すると、配布用の zip を作って GitHub の Releases に置く。
-# 「-」を含むタグ（例: v0.3.0-beta.1）は先行版にする（アプリの「新しい版のお知らせ」には出ない）。
+# v で始まるタグ（例: v0.3.0）を push するか、Actions の画面で「Run workflow」を押して版を入れると、
+# 配布用の zip を作って GitHub の Releases に置く（タグが無ければ、いまの main に付ける）。
+# 「-」を含む版（例: 0.3.0-beta.1）は先行版にする（アプリの「新しい版のお知らせ」には出ない）。
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '出す版（例: 0.3.0）'
+        required: true
 
 permissions:
   contents: write
@@ -24,7 +30,7 @@ jobs:
       - name: 版を決める
         shell: pwsh
         run: |
-          $tag = '${{ github.ref_name }}'
+          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { 'v' + '${{ inputs.version }}'.Trim().TrimStart('v') } else { '${{ github.ref_name }}' }
           $version = $tag.TrimStart('v')
           $core = ($version -split '[-+]')[0]
           if ($core -notmatch '^\d+\.\d+\.\d+$') {
@@ -73,7 +79,14 @@ jobs:
           if (-not (Test-Path $notes)) {
             $notes = 'docs/releases/default.md'
           }
-          $options = @('--title', "Hakobune $env:VERSION", '--notes-file', $notes)
+          $PSNativeCommandUseErrorActionPreference = $false
+          # 同じ版がもうあれば、zip だけ置き直す
+          gh release view $env:TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:TAG $env:ZIP --clobber
+            exit $LASTEXITCODE
+          }
+          $options = @('--title', "Hakobune $env:VERSION", '--notes-file', $notes, '--target', $env:GITHUB_SHA)
           if ($env:VERSION.Contains('-')) {
             $options += '--prerelease'
           }
