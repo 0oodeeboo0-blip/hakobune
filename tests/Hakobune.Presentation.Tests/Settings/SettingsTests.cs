@@ -303,10 +303,14 @@ public sealed class SettingsTests : IDisposable
         Assert.NotNull(shown);
         Assert.True(shown.NotifyWhenTransfersEnd);
         Assert.True(shown.ShowTaskbarProgress);
+        Assert.True(shown.CheckForUpdates);
 
         shown.NotifyWhenTransfersEnd = false;
         shown.ShowTaskbarProgress = false;
+        shown.CheckForUpdates = false;
         await shown.Applying;
+
+        Assert.False(main.Settings.Updates.CheckForUpdates);
 
         var expected = new NotificationSettings { NotifyWhenTransfersEnd = false, ShowTaskbarProgress = false };
         Assert.Equal(expected, main.Settings.Notifications);

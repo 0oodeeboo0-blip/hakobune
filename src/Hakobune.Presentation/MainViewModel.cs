@@ -14,6 +14,7 @@ using Hakobune.Presentation.Files;
 using Hakobune.Presentation.Logging;
 using Hakobune.Presentation.Settings;
 using Hakobune.Presentation.Transfers;
+using Hakobune.Presentation.Updates;
 
 namespace Hakobune.Presentation;
 
@@ -29,6 +30,7 @@ namespace Hakobune.Presentation;
 /// <param name="SyncDialogs">同期の確認の画面。null なら同期はできない。</param>
 /// <param name="BackupDirectory">上書き・削除の前の控えの置き場（大きくなるので %LOCALAPPDATA% に置く）。null なら設定の場所の下。</param>
 /// <param name="BackupDialogs">控えから元に戻すときに聞く画面。null なら聞かずに戻す。</param>
+/// <param name="Updates">新しい版を確かめる先（GitHub）。null なら確かめない。</param>
 public sealed record AppServices(
     string DataDirectory,
     ISecretStore Secrets,
@@ -40,7 +42,8 @@ public sealed record AppServices(
     ISettingsDialogs? SettingsDialogs = null,
     ISyncDialogs? SyncDialogs = null,
     string? BackupDirectory = null,
-    IBackupDialogs? BackupDialogs = null)
+    IBackupDialogs? BackupDialogs = null,
+    IUpdateSource? Updates = null)
 {
     /// <summary>接続先の一覧のファイル。</summary>
     public string ConnectionsFile => Path.Combine(DataDirectory, "connections.json");
@@ -297,6 +300,58 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     /// <summary>下の「ログ」。</summary>
     public LogViewModel LogView { get; }
 
+    /// <summary>新しい版が出ていれば、その版（ステータスバーに知らせを出す）。</summary>
+    public UpdateInfo? AvailableUpdate
+    {
+        get;
+        internal set
+        {
+            if (!SetProperty(ref field, value))
+                return;
+            OnPropertyChanged(nameof(HasUpdate));
+            OnPropertyChanged(nameof(UpdateText));
+            OnPropertyChanged(nameof(UpdatePage));
+        }
+    }
+
+    /// <summary>新しい版が出ているか。</summary>
+    public bool HasUpdate => AvailableUpdate is not null;
+
+    /// <summary>新しい版の知らせ（例: 新しい版 0.3.1 があります）。</summary>
+    public string UpdateText => AvailableUpdate is { } update ? $"新しい版 {UpdateCheck.Display(update.Version)} があります" : "";
+
+    /// <summary>新しい版のダウンロードのページ。</summary>
+    public Uri? UpdatePage => AvailableUpdate?.Page;
+
+    /// <summary>
+    /// 新しい版が出ていないか確かめる（設定で切っていれば何もしない）。確かめるのは <see cref="UpdateCheck.Interval"/> に 1 回までで、
+    /// あいだは前の結果を使う。つながらなくても何も言わない（次の起動でまた確かめる）。
+    /// </summary>
+    public async Task CheckForUpdatesAsync(Version current, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(current);
+        var settings = Settings.Updates;
+        if (!settings.CheckForUpdates)
+            return;
+        var latest = settings.Latest();
+        var now = _time.GetUtcNow();
+        if (_services?.Updates is { } source && settings.IsDue(now))
+        {
+            try
+            {
+                var json = await source.GetLatestReleaseJsonAsync(cancellationToken).ConfigureAwait(true);
+                latest = json is null ? null : UpdateCheck.Parse(json);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or InvalidOperationException)
+            {
+                return;
+            }
+            await ApplySettingsAsync(Settings with { Updates = Settings.Updates.Remember(latest, now) }).ConfigureAwait(true);
+        }
+        if (Settings.Updates.CheckForUpdates)
+            AvailableUpdate = UpdateCheck.NewerThan(latest, current);
+    }
+
     /// <summary>サーバー側で選んだものの属性を変えられるか。</summary>
     public bool CanChangePermissions => _session is not null && Remote.HasLoaded && Remote.SelectedRows.Count > 0 && _services?.FileDialogs is not null;
 
@@ -408,6 +463,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var backupsChanged = !Equals(settings.Backups, Settings.Backups);
         Settings = settings;
         Local.UseCompactRows = Remote.UseCompactRows = settings.UseCompactRows;
+        if (!settings.Updates.CheckForUpdates)
+            AvailableUpdate = null;
         if (exclusionsChanged)
             UpdateExclusions();
         if (backupsChanged && _backups is not null)

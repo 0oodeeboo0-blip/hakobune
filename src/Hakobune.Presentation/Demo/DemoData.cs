@@ -6,6 +6,7 @@ using Hakobune.Presentation.Connections;
 using Hakobune.Presentation.Files;
 using Hakobune.Presentation.Settings;
 using Hakobune.Presentation.Transfers;
+using Hakobune.Presentation.Updates;
 
 namespace Hakobune.Presentation.Demo;
 
@@ -42,6 +43,13 @@ public static class DemoData
 
     /// <summary>見本の接続先（ショップ（本番））の ID。控えの見本に使う。</summary>
     public static Guid ConnectionId { get; } = new("6d2f4c1e-3b7a-4f0e-9c55-2a1b8e7d9f01");
+
+    /// <summary>見本の画面で、新しい版の知らせ（ステータスバー）を出す。</summary>
+    public static void ShowSampleUpdate(MainViewModel viewModel)
+    {
+        ArgumentNullException.ThrowIfNull(viewModel);
+        viewModel.AvailableUpdate = new UpdateInfo(new Version(0, 3, 1), "Hakobune 0.3.1", new Uri(UpdateCheck.ReleasesPage, "releases/tag/v0.3.1"));
+    }
 
     /// <summary>見本の通知に使う、転送のひと区切り（12 件・3.3 MB を送り終えた）。</summary>
     public static TransferRunEnded SampleRunEnded { get; } =

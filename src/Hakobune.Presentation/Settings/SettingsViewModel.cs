@@ -39,6 +39,7 @@ public sealed class SettingsViewModel : ObservableObject
 
         NotifyWhenTransfersEnd = current.Notifications.NotifyWhenTransfersEnd;
         ShowTaskbarProgress = current.Notifications.ShowTaskbarProgress;
+        CheckForUpdates = current.Updates.CheckForUpdates;
 
         BackupsEnabled = current.Backups.IsEnabled;
         BackupKeepIndex = IndexOf(BackupSettings.KeepDaysChoices, current.Backups.KeepDays, fallback: 1);
@@ -121,6 +122,17 @@ public sealed class SettingsViewModel : ObservableObject
         {
             if (SetProperty(ref field, value))
                 Apply(_main.Settings with { Notifications = _main.Settings.Notifications with { ShowTaskbarProgress = value } });
+        }
+    }
+
+    /// <summary>新しい版が出たら知らせるか。</summary>
+    public bool CheckForUpdates
+    {
+        get;
+        set
+        {
+            if (SetProperty(ref field, value))
+                Apply(_main.Settings with { Updates = _main.Settings.Updates with { CheckForUpdates = value } });
         }
     }
 

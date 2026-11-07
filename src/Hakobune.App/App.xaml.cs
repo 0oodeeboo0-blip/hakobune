@@ -1,8 +1,10 @@
+using System.Reflection;
 using Hakobune.App.Services;
 using Hakobune.Presentation;
 using Hakobune.Presentation.Demo;
 using Hakobune.Presentation.Settings;
 using Hakobune.Presentation.Transfers;
+using Hakobune.Presentation.Updates;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 
@@ -29,6 +31,10 @@ public partial class App : Application
     internal static string DataDirectory =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Hakobune");
 
+    /// <summary>このアプリの版（例: 0.3.0。ビルドしたときのコミットは除く）。</summary>
+    internal static Version CurrentVersion { get; } = UpdateCheck.ParseVersion(
+        typeof(App).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion) ?? new Version(0, 0, 0);
+
     /// <summary>上書き・削除の前の控えの置き場（大きくなるので、ローミングしない %LOCALAPPDATA%\Hakobune\backups）。</summary>
     internal static string BackupDirectory =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hakobune", "backups");
@@ -50,7 +56,8 @@ public partial class App : Application
             {
                 var services = new AppServices(
                     DataDirectory, new CredentialStore(), dialogs, dialogs, dialogs, dialogs, new RecycleBinFileOperations(), dialogs, dialogs,
-                    BackupDirectory: BackupDirectory, BackupDialogs: dialogs);
+                    BackupDirectory: BackupDirectory, BackupDialogs: dialogs,
+                    Updates: Options.ScreenshotPath is null ? new GitHubUpdateSource(CurrentVersion) : null);
                 var settings = await AppSettings.LoadAsync(services.SettingsFile);
                 viewModel = await MainViewModel.CreateAsync(services, null, settings);
             }
@@ -68,6 +75,11 @@ public partial class App : Application
             await _window.WhenLoaded;
             if (Options.ShowSampleNotification && TransferNotice.From(DemoData.SampleRunEnded, "ショップ（本番）") is { } sample)
                 _notifications.Show(sample.Title, sample.Text);
+            // 新しい版が出ていないか確かめる（見本の画面では、見本の知らせを出すだけ）
+            if (Options.Demo is null)
+                _ = viewModel.CheckForUpdatesAsync(CurrentVersion);
+            else if (Options.ShowSampleUpdate)
+                DemoData.ShowSampleUpdate(viewModel);
             var ready = Start(viewModel, dialogs);
             if (Options.ScreenshotPath is not { } path)
                 return;

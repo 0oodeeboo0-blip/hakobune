@@ -5,8 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Deterministic>true</Deterministic>
     <Product>Hakobune</Product>
-    <!-- 段階 2（基本の画面）。ビルドしたコミットが「0.2.0+コミット」の形で付き、設定の画面に出る -->
-    <Version>0.2.0</Version>
+    <!-- 段階 3（追加の機能）。ビルドしたコミットが「0.3.0+コミット」の形で付き、設定の画面に出る。Releases の版はタグ（v0.3.0）で決まる -->
+    <Version>0.3.0</Version>
     <Company>Hakobune contributors</Company>
     <Copyright>Copyright (c) 2026 Hakobune contributors</Copyright>
     <NeutralLanguage>ja-JP</NeutralLanguage>

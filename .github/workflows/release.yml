@@ -1,0 +1,80 @@
+name: Release
+
+# v で始まるタグ（例: v0.3.0）を push すると、配布用の zip を作って GitHub の Releases に置く。
+# 「-」を含むタグ（例: v0.3.0-beta.1）は先行版にする（アプリの「新しい版のお知らせ」には出ない）。
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: 配布用の zip を Releases に置く
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: 版を決める
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $version = $tag.TrimStart('v')
+          $core = ($version -split '[-+]')[0]
+          if ($core -notmatch '^\d+\.\d+\.\d+$') {
+            Write-Error "タグの形が違います（v0.3.0 のように付けてください）: $tag"
+            exit 1
+          }
+          "TAG=$tag" >> $env:GITHUB_ENV
+          "VERSION=$version" >> $env:GITHUB_ENV
+          "CORE_VERSION=$core" >> $env:GITHUB_ENV
+
+      - name: 発行
+        # テストは、main に push したときの CI で済ませてある。版はタグから（例: 0.3.0、0.3.0-beta.1。コミットは自動で付く）
+        run: dotnet publish src/Hakobune.App/Hakobune.App.csproj -c Release -r win-x64 -p:Platform=x64 -p:Version=${{ env.VERSION }} -o publish/Hakobune
+
+      - name: 起動テスト
+        shell: pwsh
+        run: |
+          $png = Join-Path $PWD 'release-check.png'
+          $p = Start-Process -FilePath (Join-Path $PWD 'publish\Hakobune\Hakobune.exe') -ArgumentList "--demo --screenshot `"$png`"" -PassThru
+          $null = $p.Handle
+          if (-not $p.WaitForExit(120000)) {
+            Stop-Process -Id $p.Id -Force
+            Write-Error 'アプリが時間内に終わりませんでした'
+            exit 1
+          }
+          if (-not (Test-Path $png) -or (Test-Path "$png.error.txt")) {
+            Get-Content "$png.error.txt" -ErrorAction SilentlyContinue
+            Write-Error 'アプリを起動できませんでした'
+            exit 1
+          }
+
+      - name: zip にまとめる
+        shell: pwsh
+        run: |
+          $zip = "Hakobune-$env:VERSION-win-x64.zip"
+          Compress-Archive -Path publish\Hakobune -DestinationPath $zip
+          "ZIP=$zip" >> $env:GITHUB_ENV
+          Write-Host "$zip: $((Get-Item $zip).Length) バイト"
+
+      - name: Releases に置く
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $notes = "docs/releases/$env:CORE_VERSION.md"
+          if (-not (Test-Path $notes)) {
+            $notes = 'docs/releases/default.md'
+          }
+          $options = @('--title', "Hakobune $env:VERSION", '--notes-file', $notes)
+          if ($env:VERSION.Contains('-')) {
+            $options += '--prerelease'
+          }
+          gh release create $env:TAG $env:ZIP @options

@@ -247,6 +247,7 @@ jobs:
             @{ Name = 'main-light-stale'; Args = '--demo --scenario stale --theme light' },
             @{ Name = 'main-log-dark'; Args = '--demo --log --theme dark' },
             @{ Name = 'main-backups'; Args = '--demo --backups --theme light --size 1280x900' },
+            @{ Name = 'main-update'; Args = '--demo --update --theme dark' },
             @{ Name = 'main-light-refreshed'; Args = '--demo --scenario refreshed --theme light --size 1280x900' },
             @{ Name = 'main-dark-refreshed'; Args = '--demo --scenario refreshed --theme dark --size 1280x900' },
             @{ Name = 'dialog-new-connection'; Args = '--dialog new --theme light' },
@@ -593,6 +594,8 @@ jobs:
               [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hwnd);
               [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hwnd, IntPtr hdc);
               [DllImport("gdi32.dll")] private static extern bool BitBlt(IntPtr dest, int x, int y, int w, int h, IntPtr src, int sx, int sy, uint rop);
+              [DllImport("user32.dll")] private static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+              public static void Key(byte vk, bool up) { keybd_event(vk, 0, up ? 2u : 0u, UIntPtr.Zero); }
               public static void CopyScreen(IntPtr dest, int w, int h)
               {
                   var screen = GetDC(IntPtr.Zero);
@@ -626,6 +629,19 @@ jobs:
           $bmp.Save((Join-Path $PWD 'screenshots\notification.png'), [System.Drawing.Imaging.ImageFormat]::Png)
           $g.Dispose()
           $bmp.Dispose()
+
+          # 「応答不可」で通知が画面に出なくても、通知センター（Win+N）には入っているので、開いて撮る
+          [Screen2]::Key(0x5B, $false); [Screen2]::Key(0x4E, $false); [Screen2]::Key(0x4E, $true); [Screen2]::Key(0x5B, $true)
+          Start-Sleep -Seconds 2
+          $bmp = New-Object System.Drawing.Bitmap $bounds.Width, $bounds.Height
+          $g = [System.Drawing.Graphics]::FromImage($bmp)
+          $hdc = $g.GetHdc()
+          [Screen2]::CopyScreen($hdc, $bounds.Width, $bounds.Height)
+          $g.ReleaseHdc($hdc)
+          $bmp.Save((Join-Path $PWD 'screenshots\notification-center.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+          $g.Dispose()
+          $bmp.Dispose()
+          [Screen2]::Key(0x1B, $false); [Screen2]::Key(0x1B, $true)
           Stop-Process -Id $p.Id -Force
 
       - name: 画面写真を保存

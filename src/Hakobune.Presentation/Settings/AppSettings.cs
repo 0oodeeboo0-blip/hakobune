@@ -1,4 +1,5 @@
 using Hakobune.Core.Storage;
+using Hakobune.Presentation.Updates;
 
 namespace Hakobune.Presentation.Settings;
 
@@ -53,6 +54,9 @@ public sealed record AppSettings
 
     /// <summary>知らせ方（Windows の通知と、タスクバーのボタン）。</summary>
     public NotificationSettings Notifications { get; init; } = new();
+
+    /// <summary>新しい版を知らせるかと、前に確かめた結果。</summary>
+    public UpdateSettings Updates { get; init; } = new();
 
     /// <summary>読み込む。無い・読めない・壊れているときは、既定の設定にする。</summary>
     public static async Task<AppSettings> LoadAsync(string path, CancellationToken cancellationToken = default)

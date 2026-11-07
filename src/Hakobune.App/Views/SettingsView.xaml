@@ -159,6 +159,34 @@
                 OnContent="オン" />
         </Grid>
 
+        <Grid Style="{StaticResource SettingsCardStyle}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <FontIcon
+                VerticalAlignment="Center"
+                FontSize="16"
+                Glyph="&#xE896;" />
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock Text="新しい版が出たら知らせる" />
+                <TextBlock
+                    FontSize="12"
+                    Style="{StaticResource SecondaryTextStyle}"
+                    Text="起動したときに、GitHub の Releases に新しい版が出ていないか確かめ、下のステータスバーで知らせます（1 日に 1 回まで。送るのはこのアプリの版の番号だけです）"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+            <ToggleSwitch
+                Grid.Column="2"
+                MinWidth="0"
+                VerticalAlignment="Center"
+                AutomationProperties.Name="新しい版が出たら知らせる"
+                IsOn="{x:Bind ViewModel.CheckForUpdates, Mode=TwoWay}"
+                OffContent="オフ"
+                OnContent="オン" />
+        </Grid>
+
         <TextBlock
             Margin="0,16,0,4"
             Style="{StaticResource BodyStrongTextBlockStyle}"

@@ -32,17 +32,22 @@
   - `marquee-drag.png`、`marquee-done.png`、`marquee-autoscroll.png`、`marquee-autoscroll-done.png`、`drag-file.png`: 本物のマウスの操作（CI が user32 で動かす）で、
     一覧を囲んで選んでいる途中と終わり、端の外まで引いて流したところと一覧の外で離したところ、名前を掴んでファイルをドラッグしているところ（ウインドウの中身だけ）。
   - `notification.png`: 見本の通知（`--notify`）と、タスクバーのボタンの進み具合（見本は 76%）を、画面全体で撮ったもの。
+    CI の Windows は「応答不可」になっていて通知が画面に出ないので、`notification-center.png` で通知センター（Win+N）を開いて撮る。
+  - `main-update.png`: 新しい版の知らせ（ステータスバー、`--update`）を出した見本の画面。
   - アプリが画面写真を撮れなかったときは、同じ名前の `.error.txt` もブランチに置かれる。
 - 見本の画面は `Hakobune.exe --demo [--scenario stale|refreshed] [--theme light|dark] [--log] [--backups] [--screenshot ファイル名] [--size 1280x800]` で出せる。
   `--scenario refreshed` は、撮る直前にサーバーの一覧を取り直す（2 つ増え、index.html が変わる）。
   `--log` で、下の一覧の「ログ」を出しておく。`--backups` で「控え」を出しておく（見本の控えは一時フォルダに作る）。
-  `--notify` で、見本の通知（転送が終わりました）を出す。
+  `--notify` で、見本の通知（転送が終わりました）を出す。`--update` で、新しい版の知らせ（ステータスバー）を出す。
   `--screenshot` を付けると、アプリ自身が画面写真（RenderTargetBitmap）を保存して終わる。
   `--dialog new|edit|quick|password|passphrase|hostkey|hostkey-changed|certificate|delete|rename|delete-files|permissions|conflict|stop|settings|settings-exclusions|sync|sync-delete|restore`
   で見本のダイアログを出す（写真は画面から撮る）。
   `--connect URL` で起動してすぐクイック接続する（`--screenshot` と一緒なら、接続できなかったとき `.error.txt` を書く）。
   `--upload パス` を足すと、接続したあとそのファイルかフォルダを送り、終わるまで待つ（送れなかったら `.error.txt`）。
 - アプリのビルド結果（zip）は、利用者が Actions の成果物 `Hakobune-win-x64` からダウンロードする。
+- 配布: `v0.3.0` のようなタグを push すると、`.github/workflows/release.yml` が zip を作って GitHub の Releases に置く
+  （説明は `docs/releases/<版>.md`、無ければ `docs/releases/default.md`。「-」を含むタグは先行版）。
+  アプリは起動したときに Releases のいちばん新しい版を見て（20 時間に 1 回まで）、新しければステータスバーで知らせる。
 - ライブラリの API は、公開リポジトリを `git clone --depth 1` して読む（GitHub には git で接続できる）。例: FluentFTP、SSH.NET。
 
 ## 実サーバーでのテスト
