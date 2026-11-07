@@ -268,7 +268,8 @@ jobs:
             @{ Name = 'dialog-settings-exclusions'; Args = '--dialog settings-exclusions --theme light --size 1280x900' },
             @{ Name = 'dialog-sync'; Args = '--dialog sync --theme light --size 1280x1000' },
             @{ Name = 'dialog-sync-dark'; Args = '--dialog sync-delete --theme dark --size 1280x1000' },
-            @{ Name = 'dialog-restore'; Args = '--dialog restore --theme light' }
+            @{ Name = 'dialog-restore'; Args = '--dialog restore --theme light' },
+            @{ Name = 'dialog-ffftp'; Args = '--dialog ffftp --theme light --size 1280x900' }
           )
           $failed = $false
           foreach ($shot in $shots) {
@@ -643,6 +644,12 @@ jobs:
           $bmp.Dispose()
           [Screen2]::Key(0x1B, $false); [Screen2]::Key(0x1B, $true)
           Stop-Process -Id $p.Id -Force
+          $status = Join-Path $env:LOCALAPPDATA 'Hakobune\notify-test.txt'
+          if (Test-Path $status) {
+            Write-Host "通知: $(Get-Content $status -Raw)"
+          } else {
+            Write-Host '::warning::通知の様子が書き出されていません'
+          }
 
       - name: 画面写真を保存
         if: always()

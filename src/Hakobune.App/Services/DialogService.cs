@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Globalization;
 using Hakobune.App.Views;
 using Hakobune.Core.Connections;
+using Hakobune.Core.Import;
 using Hakobune.Core.Transfers;
 using Hakobune.Core.Remote;
 using Hakobune.Presentation.Backups;
@@ -15,6 +16,7 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Windows.Foundation;
+using Windows.Storage.Pickers;
 
 namespace Hakobune.App.Services;
 
@@ -22,7 +24,8 @@ namespace Hakobune.App.Services;
 /// 接続のときの質問（パスワード、サーバーの鍵、証明書）と、接続先の作成・編集を、ダイアログで聞く。
 /// どのスレッドから呼んでもよい（画面のスレッドに頼んで出す）。
 /// </summary>
-internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, ITransferDialogs, IFileDialogs, ISettingsDialogs, ISyncDialogs, IBackupDialogs
+internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, ITransferDialogs, IFileDialogs, ISettingsDialogs, ISyncDialogs, IBackupDialogs,
+    IFfftpImportDialogs
 {
     private readonly DispatcherQueue _dispatcher;
     private readonly Func<XamlRoot?> _xamlRoot;
@@ -457,6 +460,61 @@ internal sealed class DialogService : IConnectionPrompts, IConnectionDialogs, IT
             completion.SetException(new InvalidOperationException("画面を出せませんでした（アプリを閉じるところかもしれません）。"));
         return completion.Task;
     }
+
+    // ---- FFFTP から読み込む ----
+
+    public FfftpSettings? ReadInstalledSettings() => FfftpRegistry.Read();
+
+    public Task<string?> PickSettingsFileAsync() =>
+        OnUiThreadAsync(async () =>
+        {
+            try
+            {
+                var picker = new FileOpenPicker { ViewMode = PickerViewMode.List, SuggestedStartLocation = PickerLocationId.ComputerFolder };
+                picker.FileTypeFilter.Add(".ini");
+                picker.FileTypeFilter.Add(".reg");
+                picker.FileTypeFilter.Add("*");
+                WinRT.Interop.InitializeWithWindow.Initialize(picker, _windowHandle());
+                return (await picker.PickSingleFileAsync())?.Path;
+            }
+            catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                return null;
+            }
+        });
+
+    public Task<bool> ReviewAsync(FfftpImportViewModel import) =>
+        OnUiThreadAsync(async () =>
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "FFFTP から接続先を読み込む",
+                Content = new FfftpImportView(import),
+                PrimaryButtonText = import.PrimaryText,
+                IsPrimaryButtonEnabled = import.CanImport,
+                CloseButtonText = "やめる",
+                DefaultButton = ContentDialogButton.Primary,
+            };
+            dialog.Resources["ContentDialogMaxWidth"] = 720d;
+            dialog.Resources["ContentDialogMaxHeight"] = 900d;
+            PropertyChangedEventHandler onChanged = (_, e) =>
+            {
+                if (e.PropertyName is nameof(FfftpImportViewModel.PrimaryText) or nameof(FfftpImportViewModel.CanImport))
+                {
+                    dialog.PrimaryButtonText = import.PrimaryText;
+                    dialog.IsPrimaryButtonEnabled = import.CanImport;
+                }
+            };
+            import.PropertyChanged += onChanged;
+            try
+            {
+                return await ShowAsync(dialog).ConfigureAwait(true) == ContentDialogResult.Primary;
+            }
+            finally
+            {
+                import.PropertyChanged -= onChanged;
+            }
+        });
 
     // 高すぎるときだけ縦に送れる入れ物。スクロールバーはダイアログの右の余白に出し、中身の幅は変えない
     private static ScrollViewer Scrollable() => new()

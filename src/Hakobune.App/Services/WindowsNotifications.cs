@@ -12,6 +12,9 @@ internal sealed class WindowsNotifications : IDisposable
 {
     private bool _registered;
 
+    /// <summary>いまの様子（登録できたか、できなければその理由。CI で見本の通知を確かめるときに書き出す）。</summary>
+    public string Status { get; private set; } = "まだ登録していません";
+
     /// <summary>通知を押された。画面のスレッドとは限らない。</summary>
     public event EventHandler? Invoked;
 
@@ -25,7 +28,10 @@ internal sealed class WindowsNotifications : IDisposable
         try
         {
             if (!AppNotificationManager.IsSupported())
+            {
+                Status = "この Windows では通知を使えません（IsSupported が false）";
                 return;
+            }
             var manager = AppNotificationManager.Default;
             manager.NotificationInvoked += OnNotificationInvoked;
             try
@@ -36,18 +42,21 @@ internal sealed class WindowsNotifications : IDisposable
                 else
                     manager.Register();
             }
-            catch (ArgumentException)
+            catch (ArgumentException ex)
             {
                 // アイコンを受け付けなかったときは、Windows に任せる（exe の名前とアイコン）
+                Status = $"アイコンを受け付けませんでした（{ex.Message}）";
                 manager.Register();
             }
             _registered = true;
+            Status = $"登録しました（通知の設定: {manager.Setting}）";
         }
         catch (Exception ex) when (ex is COMException or InvalidOperationException or NotSupportedException or UnauthorizedAccessException
             or ArgumentException or TypeInitializationException or DllNotFoundException)
         {
             // 通知を出せない環境（古い Windows、通知を止めている会社のパソコンなど）では、何もしない
             _registered = false;
+            Status = $"登録できませんでした（{ex.GetType().Name}: {ex.Message}）";
         }
     }
 
@@ -63,9 +72,11 @@ internal sealed class WindowsNotifications : IDisposable
                 .AddText(text)
                 .BuildNotification();
             AppNotificationManager.Default.Show(notification);
+            Status = $"出しました（id {notification.Id}）";
         }
         catch (Exception ex) when (ex is COMException or InvalidOperationException or ArgumentException)
         {
+            Status = $"出せませんでした（{ex.GetType().Name}: {ex.Message}）";
         }
     }
 

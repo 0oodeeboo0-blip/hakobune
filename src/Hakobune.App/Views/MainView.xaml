@@ -308,6 +308,11 @@
                                     <FontIcon Glyph="&#xE703;" />
                                 </MenuFlyoutItem.Icon>
                             </MenuFlyoutItem>
+                            <MenuFlyoutItem Command="{x:Bind ViewModel.ImportFfftpCommand}" Text="FFFTP から読み込む…">
+                                <MenuFlyoutItem.Icon>
+                                    <FontIcon Glyph="&#xE8B5;" />
+                                </MenuFlyoutItem.Icon>
+                            </MenuFlyoutItem>
                             <MenuFlyoutSeparator />
                             <MenuFlyoutItem
                                 Command="{x:Bind ViewModel.ChangePermissionsCommand}"
@@ -655,6 +660,13 @@
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <FontIcon FontSize="14" Glyph="&#xE710;" />
                             <TextBlock Text="新しい接続" />
+                        </StackPanel>
+                    </Button>
+                    <!--  FFFTP から乗り換える人向け  -->
+                    <Button Command="{x:Bind ViewModel.ImportFfftpCommand}" Visibility="{x:Bind ViewModel.CanImportFfftp}">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon FontSize="14" Glyph="&#xE8B5;" />
+                            <TextBlock Text="FFFTP から読み込む" />
                         </StackPanel>
                     </Button>
                 </StackPanel>

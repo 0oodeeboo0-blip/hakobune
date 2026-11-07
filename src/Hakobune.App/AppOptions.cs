@@ -110,6 +110,7 @@ internal sealed record AppOptions
                             "sync" => DemoDialog.Sync,
                             "sync-delete" => DemoDialog.SyncDelete,
                             "restore" => DemoDialog.Restore,
+                            "ffftp" => DemoDialog.FfftpImport,
                             _ => null,
                         },
                     };

@@ -1,4 +1,5 @@
 using Hakobune.Core.Connections;
+using Hakobune.Core.Import;
 using Hakobune.Core.Transfers;
 using Hakobune.Presentation.Backups;
 using Hakobune.Presentation.Connections;
@@ -67,6 +68,9 @@ public enum DemoDialog
 
     /// <summary>控えから元に戻すときの確認（1 件は、控えを取ったあとにも変わっている）。</summary>
     Restore,
+
+    /// <summary>FFFTP から接続先を読み込むところ（グループ、同じものがある、文字コードの注意を含む）。</summary>
+    FfftpImport,
 }
 
 /// <summary>見本のダイアログに出す中身。</summary>
@@ -160,6 +164,38 @@ public static class DemoDialogs
             SyncDirection.Upload, local, remote, items, SameCount: 128, ExcludedCount: 3, UnreadableFolders: [], TooMany: false, ClockOffset: TimeSpan.Zero);
     }
 
+    /// <summary>見本の FFFTP の設定（マスターパスワードは決めていない）。</summary>
+    public static FfftpSettings SampleFfftpSettings()
+    {
+        // 「hakobune-pass」を、決めていないマスターパスワードで保存したもの
+        const string password = "0C000102030405060708090a0b0c0d0e0f:6adeef63e786b046f786f7be33434920ad7a15c22e60a6b73cad709f133b5992";
+        var settings = new FfftpSettings();
+        settings.Set("FFFTP", "Version", 5700);
+        settings.Set(@"FFFTP\Options", "SetNum", 7);
+        void Host(int index, int level, string name, string address = "", string user = "", string? stored = null, params (string Name, int Value)[] numbers)
+        {
+            var key = $@"FFFTP\Options\Host{index}";
+            settings.Set(key, "Set", level);
+            settings.Set(key, "HostName", name);
+            if (address.Length > 0)
+                settings.Set(key, "HostAdrs", address);
+            if (user.Length > 0)
+                settings.Set(key, "UserName", user);
+            if (stored is not null)
+                settings.Set(key, "Password", stored);
+            foreach (var (valueName, value) in numbers)
+                settings.Set(key, valueName, value);
+        }
+        Host(0, 0x8000, "仕事");
+        Host(1, 1, "ショップ（本番）", "example.com", "web", password, ("FTPIS", 0), ("NoEncryption", 0));
+        Host(2, 1, "ショップ（検証）", "staging.example.com", "web", password, ("FTPIS", 0), ("FTPES", 0));
+        Host(3, 0x8000, "個人");
+        Host(4, 1, "ブログ", "blog.example.com", "blog", password);
+        Host(5, 1, "古いサーバー", "old.example.jp", "user", null, ("NameKanji", 1));
+        Host(6, 0, "公開ミラー", "ftp.example.org", "", null, ("Anonymous", 1));
+        return settings;
+    }
+
     /// <summary>
     /// 見本のダイアログを出す。閉じるまで待つ。ファイル・転送・設定のダイアログは、その画面と <paramref name="main"/> があるときだけ出す。
     /// </summary>
@@ -172,7 +208,8 @@ public static class DemoDialogs
         ISettingsDialogs? settingsDialogs = null,
         MainViewModel? main = null,
         ISyncDialogs? syncDialogs = null,
-        IBackupDialogs? backupDialogs = null)
+        IBackupDialogs? backupDialogs = null,
+        IFfftpImportDialogs? ffftpDialogs = null)
     {
         ArgumentNullException.ThrowIfNull(prompts);
         ArgumentNullException.ThrowIfNull(dialogs);
@@ -216,6 +253,11 @@ public static class DemoDialogs
                     ["/var/www/html/index.html", "/var/www/html/css/site.css", "/var/www/html/campaign-2025/index.html"],
                     5,
                     ["/var/www/html/index.html"]).ConfigureAwait(true);
+                break;
+            case DemoDialog.FfftpImport when ffftpDialogs is not null && main is not null:
+                var import = new FfftpImportViewModel(main.Connections.Profiles);
+                import.Load(SampleFfftpSettings(), "このパソコンの FFFTP の設定");
+                await ffftpDialogs.ReviewAsync(import).ConfigureAwait(true);
                 break;
             case DemoDialog.NewConnection:
                 await dialogs.EditAsync(null, hasSavedPassword: false).ConfigureAwait(true);

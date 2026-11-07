@@ -31,6 +31,7 @@ namespace Hakobune.Presentation;
 /// <param name="BackupDirectory">上書き・削除の前の控えの置き場（大きくなるので %LOCALAPPDATA% に置く）。null なら設定の場所の下。</param>
 /// <param name="BackupDialogs">控えから元に戻すときに聞く画面。null なら聞かずに戻す。</param>
 /// <param name="Updates">新しい版を確かめる先（GitHub）。null なら確かめない。</param>
+/// <param name="FfftpImport">FFFTP から接続先を読み込むときの画面。null なら読み込めない。</param>
 public sealed record AppServices(
     string DataDirectory,
     ISecretStore Secrets,
@@ -43,7 +44,8 @@ public sealed record AppServices(
     ISyncDialogs? SyncDialogs = null,
     string? BackupDirectory = null,
     IBackupDialogs? BackupDialogs = null,
-    IUpdateSource? Updates = null)
+    IUpdateSource? Updates = null,
+    IFfftpImportDialogs? FfftpImport = null)
 {
     /// <summary>接続先の一覧のファイル。</summary>
     public string ConnectionsFile => Path.Combine(DataDirectory, "connections.json");
@@ -136,6 +138,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         DisconnectCommand = new AsyncRelayCommand(DisconnectAsync, () => IsConnected || IsConnecting);
         // 見本の画面でもボタンは押せる見た目にする（押しても何もしない）
         NewConnectionCommand = new AsyncRelayCommand(NewConnectionAsync);
+        ImportFfftpCommand = new AsyncRelayCommand(ImportFfftpAsync, () => services?.FfftpImport is not null);
         QuickConnectCommand = new AsyncRelayCommand(AskQuickConnectAsync);
         EditConnectionCommand = new AsyncRelayCommand<ConnectionItemViewModel>(EditConnectionAsync);
         DuplicateConnectionCommand = new AsyncRelayCommand<ConnectionItemViewModel>(DuplicateConnectionAsync);
@@ -248,6 +251,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     public IAsyncRelayCommand DisconnectCommand { get; }
 
     public IAsyncRelayCommand NewConnectionCommand { get; }
+
+    /// <summary>FFFTP の接続先を読み込む（このパソコンの FFFTP の設定か、ffftp.ini・.reg のファイルから）。</summary>
+    public IAsyncRelayCommand ImportFfftpCommand { get; }
+
+    /// <summary>FFFTP から読み込めるか。</summary>
+    public bool CanImportFfftp => _services?.FfftpImport is not null;
 
     /// <summary>保存せずに接続する（クイック接続。Ctrl+Q）。</summary>
     public IAsyncRelayCommand QuickConnectCommand { get; }
@@ -1507,6 +1516,35 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         var item = Connections.Add(result.Profile);
         await SaveConnectionsAsync().ConfigureAwait(true);
         await ConnectAsync(item, result.Password).ConfigureAwait(true);
+    }
+
+    private async Task ImportFfftpAsync()
+    {
+        if (_services?.FfftpImport is not { } dialogs)
+            return;
+        var import = new FfftpImportViewModel(Connections.Profiles, dialogs.PickSettingsFileAsync);
+        if (dialogs.ReadInstalledSettings() is { IsEmpty: false } installed)
+            import.Load(installed, "このパソコンの FFFTP の設定");
+        else if (await dialogs.PickSettingsFileAsync().ConfigureAwait(true) is { } path)
+            await import.LoadFileAsync(path).ConfigureAwait(true);
+        else
+            return;
+        if (!await dialogs.ReviewAsync(import).ConfigureAwait(true))
+            return;
+
+        var imported = import.BuildResult();
+        if (imported.Count == 0)
+            return;
+        foreach (var (profile, password) in imported)
+        {
+            if (!string.IsNullOrEmpty(password))
+                _services.Secrets.TryWrite(profile.Id, password);
+            Connections.Add(profile);
+        }
+        await SaveConnectionsAsync().ConfigureAwait(true);
+        var passwords = imported.Count(item => !string.IsNullOrEmpty(item.Password));
+        Log.Success($"FFFTP から接続先を {imported.Count} 件読み込みました（パスワードあり {passwords} 件）");
+        UpdateDisconnectedHint();
     }
 
     private async Task AskQuickConnectAsync()

@@ -56,7 +56,7 @@ public partial class App : Application
             {
                 var services = new AppServices(
                     DataDirectory, new CredentialStore(), dialogs, dialogs, dialogs, dialogs, new RecycleBinFileOperations(), dialogs, dialogs,
-                    BackupDirectory: BackupDirectory, BackupDialogs: dialogs,
+                    BackupDirectory: BackupDirectory, BackupDialogs: dialogs, FfftpImport: dialogs,
                     Updates: Options.ScreenshotPath is null ? new GitHubUpdateSource(CurrentVersion) : null);
                 var settings = await AppSettings.LoadAsync(services.SettingsFile);
                 viewModel = await MainViewModel.CreateAsync(services, null, settings);
@@ -74,7 +74,11 @@ public partial class App : Application
             // 接続のときのダイアログを出せるよう、画面ができてから始める
             await _window.WhenLoaded;
             if (Options.ShowSampleNotification && TransferNotice.From(DemoData.SampleRunEnded, "ショップ（本番）") is { } sample)
+            {
                 _notifications.Show(sample.Title, sample.Text);
+                // CI で、通知を出せたかを読めるように書き出す
+                WriteNotificationStatus(_notifications.Status);
+            }
             // 新しい版が出ていないか確かめる（見本の画面では、見本の知らせを出すだけ）
             if (Options.Demo is null)
                 _ = viewModel.CheckForUpdatesAsync(CurrentVersion);
@@ -120,10 +124,23 @@ public partial class App : Application
         return Task.CompletedTask;
     }
 
+    private static void WriteNotificationStatus(string status)
+    {
+        try
+        {
+            var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Hakobune");
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, "notify-test.txt"), status);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
+
     // 見本のダイアログを出す。閉じるまで終わらないので、出るまで少し待つ。出せなかったら記録する（CI で分かるように）
     private static async Task ShowDemoDialogAsync(DemoDialog dialog, MainViewModel viewModel, DialogService dialogs)
     {
-        var showing = DemoDialogs.ShowAsync(dialog, dialogs, dialogs, dialogs, dialogs, dialogs, viewModel, dialogs, dialogs);
+        var showing = DemoDialogs.ShowAsync(dialog, dialogs, dialogs, dialogs, dialogs, dialogs, viewModel, dialogs, dialogs, dialogs);
         await Task.WhenAny(showing, Task.Delay(TimeSpan.FromSeconds(1)));
         if (showing.IsFaulted && showing.Exception is { } failure)
             CrashReport.Write(failure.GetBaseException());
