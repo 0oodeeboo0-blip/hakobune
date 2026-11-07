@@ -32,7 +32,8 @@
   - `marquee-drag.png`、`marquee-done.png`、`marquee-autoscroll.png`、`marquee-autoscroll-done.png`、`drag-file.png`: 本物のマウスの操作（CI が user32 で動かす）で、
     一覧を囲んで選んでいる途中と終わり、端の外まで引いて流したところと一覧の外で離したところ、名前を掴んでファイルをドラッグしているところ（ウインドウの中身だけ）。
   - `notification.png`: 見本の通知（`--notify`）と、タスクバーのボタンの進み具合（見本は 76%）を、画面全体で撮ったもの。
-    CI の Windows は「応答不可」になっていて通知が画面に出ないので、`notification-center.png` で通知センター（Win+N）を開いて撮る。
+    管理者の権限のアプリは通知を出せない（Windows App SDK の `IsSupported`）ので、CI は `runas /trustlevel:0x20000` でふつうの権限で起動する。
+    CI の Windows は「応答不可」で通知が画面に出ないので、`notification-center.png` で通知センター（Win+N）を開いて撮る。
   - `main-update.png`: 新しい版の知らせ（ステータスバー、`--update`）を出した見本の画面。
   - アプリが画面写真を撮れなかったときは、同じ名前の `.error.txt` もブランチに置かれる。
 - 見本の画面は `Hakobune.exe --demo [--scenario stale|refreshed] [--theme light|dark] [--log] [--backups] [--screenshot ファイル名] [--size 1280x800]` で出せる。

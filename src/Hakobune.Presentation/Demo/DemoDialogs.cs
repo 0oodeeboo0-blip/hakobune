@@ -255,7 +255,7 @@ public static class DemoDialogs
                     ["/var/www/html/index.html"]).ConfigureAwait(true);
                 break;
             case DemoDialog.FfftpImport when ffftpDialogs is not null && main is not null:
-                var import = new FfftpImportViewModel(main.Connections.Profiles);
+                var import = new FfftpImportViewModel(main.Connections.Profiles, ffftpDialogs.PickSettingsFileAsync);
                 import.Load(SampleFfftpSettings(), "このパソコンの FFFTP の設定");
                 await ffftpDialogs.ReviewAsync(import).ConfigureAwait(true);
                 break;

@@ -608,12 +608,18 @@ jobs:
           Add-Type -AssemblyName System.Windows.Forms, System.Drawing
           $exe = Join-Path $PWD 'publish\Hakobune-win-x64\Hakobune.exe'
           New-Item -ItemType Directory -Force screenshots | Out-Null
-          $p = Start-Process -FilePath $exe -ArgumentList '--demo --notify --theme light --size 1280x800' -PassThru
-          $hwnd = [IntPtr]::Zero
-          for ($i = 0; $i -lt 60 -and $hwnd -eq [IntPtr]::Zero; $i++) {
+          # CI は管理者の権限で動いていて、管理者のアプリは通知を出せない（Windows App SDK の決まり）。ふつうの権限で起動する
+          Get-Process -Name Hakobune -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Process -FilePath runas.exe -ArgumentList "/trustlevel:0x20000 `"$exe --demo --notify --theme light --size 1280x800`""
+          $p = $null
+          for ($i = 0; $i -lt 60 -and -not $p; $i++) {
             Start-Sleep -Milliseconds 500
-            $p.Refresh()
-            $hwnd = $p.MainWindowHandle
+            $p = Get-Process -Name Hakobune -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+          }
+          if (-not $p) {
+            Write-Host '::warning::ふつうの権限で起動できなかったので、そのまま起動します'
+            $p = Start-Process -FilePath $exe -ArgumentList '--demo --notify --theme light --size 1280x800' -PassThru
+            Start-Sleep -Seconds 8
           }
           # 通知は 5 秒ほどで引っ込むので、出てすぐに撮る
           Start-Sleep -Seconds 3
